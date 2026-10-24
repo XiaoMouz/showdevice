@@ -1,0 +1,450 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AppSnapshot",
+  "type": "object",
+  "properties": {
+    "api": {
+      "type": "string"
+    },
+    "devices": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/DeviceView"
+      }
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "generated_at_ms": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "writes_enabled": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "api",
+    "generated_at_ms",
+    "writes_enabled",
+    "devices",
+    "diagnostics"
+  ],
+  "$defs": {
+    "Availability": {
+      "type": "string",
+      "enum": [
+        "available",
+        "unknown",
+        "stale",
+        "unsupported",
+        "offline"
+      ]
+    },
+    "Capability": {
+      "type": "object",
+      "properties": {
+        "depends_on": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "effect": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "id": {
+          "type": "string"
+        },
+        "readable": {
+          "type": "boolean"
+        },
+        "subscribable": {
+          "type": "boolean"
+        },
+        "value_type": {
+          "$ref": "#/$defs/ValueType"
+        },
+        "writable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "readable",
+        "writable",
+        "subscribable",
+        "value_type"
+      ]
+    },
+    "Condition": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "binding": {
+              "type": "string"
+            },
+            "op": {
+              "type": "string",
+              "const": "available"
+            }
+          },
+          "required": [
+            "op",
+            "binding"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "binding": {
+              "type": "string"
+            },
+            "op": {
+              "type": "string",
+              "const": "equals"
+            },
+            "value": true
+          },
+          "required": [
+            "op",
+            "binding",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "host_writes_enabled"
+            }
+          },
+          "required": [
+            "op"
+          ]
+        }
+      ]
+    },
+    "Connection": {
+      "type": "string",
+      "enum": [
+        "usb",
+        "receiver",
+        "ble"
+      ]
+    },
+    "Device": {
+      "type": "object",
+      "properties": {
+        "connection": {
+          "$ref": "#/$defs/Connection"
+        },
+        "firmware": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "id": {
+          "type": "string"
+        },
+        "interface": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "name": {
+          "type": "string"
+        },
+        "product_id": {
+          "type": "integer",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0
+        },
+        "usage": {
+          "type": "integer",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0
+        },
+        "usage_page": {
+          "type": "integer",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0
+        },
+        "vendor_id": {
+          "type": "integer",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "vendor_id",
+        "product_id",
+        "interface",
+        "usage_page",
+        "usage",
+        "connection"
+      ]
+    },
+    "DeviceView": {
+      "type": "object",
+      "properties": {
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Capability"
+          }
+        },
+        "device": {
+          "$ref": "#/$defs/Device"
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pages": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/UiPage"
+          }
+        },
+        "plugin": {
+          "type": "string"
+        },
+        "state": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/Reading"
+          }
+        }
+      },
+      "required": [
+        "device",
+        "plugin",
+        "state",
+        "pages",
+        "capabilities"
+      ]
+    },
+    "Reading": {
+      "type": "object",
+      "properties": {
+        "availability": {
+          "$ref": "#/$defs/Availability"
+        },
+        "precision": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "type": "string"
+        },
+        "updated_at_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "value": true
+      },
+      "required": [
+        "availability",
+        "source"
+      ]
+    },
+    "UiNode": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "binding": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "children": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/UiNode"
+          }
+        },
+        "component": {
+          "type": "string"
+        },
+        "enabled_when": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Condition"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0
+        },
+        "visible_when": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Condition"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "id",
+        "component",
+        "version",
+        "label"
+      ]
+    },
+    "UiPage": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/UiNode"
+          }
+        },
+        "optional": {
+          "type": "boolean",
+          "default": false
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "nodes"
+      ]
+    },
+    "ValueType": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "max": {
+              "type": "number",
+              "format": "double"
+            },
+            "min": {
+              "type": "number",
+              "format": "double"
+            },
+            "step": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double"
+            },
+            "type": {
+              "type": "string",
+              "const": "number"
+            }
+          },
+          "required": [
+            "type",
+            "min",
+            "max"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "boolean"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "choice"
+            },
+            "values": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "type",
+            "values"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "text"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        }
+      ]
+    }
+  }
+}

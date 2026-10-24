@@ -1,0 +1,35 @@
+name: check
+on: [push, pull_request]
+jobs:
+  rust:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev libdbus-1-dev libgtk-4-dev python3-gi gir1.2-gtk-4.0
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo check -p sd-ble --features native
+      - run: cargo test --workspace
+      - run: cargo build --workspace
+      - run: cargo run -p showdevice -- package .
+      - run: cargo run -p showdevice -- self-test dist/plugins
+      - if: runner.os == 'macOS'
+        run: sh apps/macos/build.sh
+      - if: runner.os == 'Linux'
+        run: python3 -m py_compile apps/linux/main.py ui/native/linux/plugin_page.py
+  windows-ui:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet build apps/windows/ShowDevice.csproj -p:Platform=x64 -p:RuntimeIdentifier=win-x64
+

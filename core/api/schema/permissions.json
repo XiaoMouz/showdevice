@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Permissions",
+  "type": "object",
+  "properties": {
+    "queries": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/Query"
+      }
+    }
+  },
+  "required": [
+    "queries"
+  ],
+  "$defs": {
+    "Query": {
+      "description": "Trusted local packages supply read-query recipes. Plugins invoke names, not\narbitrary transfers. Configuration writes are not part of the host protocol.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "delay_ms": {
+              "type": "integer",
+              "format": "uint16",
+              "maximum": 65535,
+              "minimum": 0
+            },
+            "kind": {
+              "type": "string",
+              "const": "hid_feature"
+            },
+            "request": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "uint8",
+                "maximum": 255,
+                "minimum": 0
+              }
+            },
+            "response_len": {
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "request",
+            "response_len",
+            "delay_ms"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "command": {
+              "type": "integer",
+              "format": "uint8",
+              "maximum": 255,
+              "minimum": 0
+            },
+            "command_index": {
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            },
+            "kind": {
+              "type": "string",
+              "const": "hid_output"
+            },
+            "report_id": {
+              "type": "integer",
+              "format": "uint8",
+              "maximum": 255,
+              "minimum": 0
+            },
+            "request": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "uint8",
+                "maximum": 255,
+                "minimum": 0
+              }
+            },
+            "response_len": {
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "request",
+            "response_len",
+            "report_id",
+            "command_index",
+            "command"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "hid_input"
+            },
+            "response_len": {
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "response_len"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "characteristic": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "const": "ble_read"
+            },
+            "service": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "service",
+            "characteristic"
+          ]
+        }
+      ]
+    }
+  }
+}

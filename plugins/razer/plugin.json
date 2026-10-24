@@ -1,0 +1,112 @@
+{
+  "manifest": {
+    "id": "org.showdevice.razer",
+    "version": "0.1.0",
+    "api": ">=1.0.0, <2.0.0",
+    "wire": 1,
+    "executable": "sd-plugin-razer.exe",
+    "required": [
+      "state.snapshot.v1",
+      "ui.declarative.v1"
+    ],
+    "matches": [
+      {
+        "vendor_id": 5426,
+        "product_id": 165,
+        "usage_page": 1,
+        "usage": 2,
+        "interface": 0
+      },
+      {
+        "vendor_id": 5426,
+        "product_id": 166,
+        "usage_page": 1,
+        "usage": 2,
+        "interface": 0
+      }
+    ]
+  },
+  "capabilities": [
+    {
+      "id": "battery.percent",
+      "readable": true,
+      "writable": false,
+      "subscribable": false,
+      "value_type": {
+        "type": "number",
+        "min": 0,
+        "max": 100,
+        "step": null
+      }
+    },
+    {
+      "id": "battery.charging",
+      "readable": true,
+      "writable": false,
+      "subscribable": false,
+      "value_type": {
+        "type": "boolean"
+      }
+    },
+    {
+      "id": "dpi.x",
+      "readable": true,
+      "writable": false,
+      "subscribable": false,
+      "value_type": {
+        "type": "number",
+        "min": 1,
+        "max": 45000,
+        "step": null
+      }
+    },
+    {
+      "id": "dpi.y",
+      "readable": true,
+      "writable": false,
+      "subscribable": false,
+      "value_type": {
+        "type": "number",
+        "min": 1,
+        "max": 45000,
+        "step": null
+      }
+    }
+  ],
+  "pages": [
+    {
+      "id": "overview",
+      "title": "Device status",
+      "nodes": [
+        {
+          "id": "battery_percent",
+          "component": "status",
+          "version": 1,
+          "label": "Battery (%)",
+          "binding": "battery.percent"
+        },
+        {
+          "id": "battery_charging",
+          "component": "status",
+          "version": 1,
+          "label": "Charging",
+          "binding": "battery.charging"
+        },
+        {
+          "id": "dpi_x",
+          "component": "status",
+          "version": 1,
+          "label": "Horizontal DPI",
+          "binding": "dpi.x"
+        },
+        {
+          "id": "dpi_y",
+          "component": "status",
+          "version": 1,
+          "label": "Vertical DPI",
+          "binding": "dpi.y"
+        }
+      ]
+    }
+  ]
+}

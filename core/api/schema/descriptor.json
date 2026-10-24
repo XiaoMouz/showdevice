@@ -1,0 +1,420 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Descriptor",
+  "type": "object",
+  "properties": {
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Capability"
+      }
+    },
+    "manifest": {
+      "$ref": "#/$defs/Manifest"
+    },
+    "pages": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/UiPage"
+      }
+    }
+  },
+  "required": [
+    "manifest",
+    "capabilities",
+    "pages"
+  ],
+  "$defs": {
+    "Capability": {
+      "type": "object",
+      "properties": {
+        "depends_on": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "effect": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "id": {
+          "type": "string"
+        },
+        "readable": {
+          "type": "boolean"
+        },
+        "subscribable": {
+          "type": "boolean"
+        },
+        "value_type": {
+          "$ref": "#/$defs/ValueType"
+        },
+        "writable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "readable",
+        "writable",
+        "subscribable",
+        "value_type"
+      ]
+    },
+    "Condition": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "binding": {
+              "type": "string"
+            },
+            "op": {
+              "type": "string",
+              "const": "available"
+            }
+          },
+          "required": [
+            "op",
+            "binding"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "binding": {
+              "type": "string"
+            },
+            "op": {
+              "type": "string",
+              "const": "equals"
+            },
+            "value": true
+          },
+          "required": [
+            "op",
+            "binding",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "host_writes_enabled"
+            }
+          },
+          "required": [
+            "op"
+          ]
+        }
+      ]
+    },
+    "Connection": {
+      "type": "string",
+      "enum": [
+        "usb",
+        "receiver",
+        "ble"
+      ]
+    },
+    "DeviceMatch": {
+      "type": "object",
+      "properties": {
+        "connection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Connection"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "firmware": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "interface": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int32",
+          "default": null
+        },
+        "product_id": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "default": null,
+          "maximum": 65535,
+          "minimum": 0
+        },
+        "usage": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "default": null,
+          "maximum": 65535,
+          "minimum": 0
+        },
+        "usage_page": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "default": null,
+          "maximum": 65535,
+          "minimum": 0
+        },
+        "vendor_id": {
+          "type": "integer",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0
+        }
+      },
+      "required": [
+        "vendor_id"
+      ]
+    },
+    "Manifest": {
+      "type": "object",
+      "properties": {
+        "api": {
+          "type": "string"
+        },
+        "args": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "executable": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "matches": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DeviceMatch"
+          }
+        },
+        "required": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "version": {
+          "type": "string"
+        },
+        "wire": {
+          "type": "integer",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "api",
+        "wire",
+        "executable",
+        "matches"
+      ]
+    },
+    "UiNode": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "binding": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "children": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/UiNode"
+          }
+        },
+        "component": {
+          "type": "string"
+        },
+        "enabled_when": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Condition"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0
+        },
+        "visible_when": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Condition"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "id",
+        "component",
+        "version",
+        "label"
+      ]
+    },
+    "UiPage": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/UiNode"
+          }
+        },
+        "optional": {
+          "type": "boolean",
+          "default": false
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "nodes"
+      ]
+    },
+    "ValueType": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "max": {
+              "type": "number",
+              "format": "double"
+            },
+            "min": {
+              "type": "number",
+              "format": "double"
+            },
+            "step": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double"
+            },
+            "type": {
+              "type": "string",
+              "const": "number"
+            }
+          },
+          "required": [
+            "type",
+            "min",
+            "max"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "boolean"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "choice"
+            },
+            "values": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "type",
+            "values"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "text"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        }
+      ]
+    }
+  }
+}

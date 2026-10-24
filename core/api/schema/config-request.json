@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ConfigRequest",
+  "description": "Future extension only. These are NOT accepted by the v1 HostMessage endpoint.",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "operation": {
+          "type": "string",
+          "const": "read"
+        }
+      },
+      "required": [
+        "operation",
+        "fields"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "change": {
+          "$ref": "#/$defs/ConfigChange"
+        },
+        "operation": {
+          "type": "string",
+          "const": "validate"
+        }
+      },
+      "required": [
+        "operation",
+        "change"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "change": {
+          "$ref": "#/$defs/ConfigChange"
+        },
+        "operation": {
+          "type": "string",
+          "const": "commit"
+        }
+      },
+      "required": [
+        "operation",
+        "change"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "expected": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "operation": {
+          "type": "string",
+          "const": "verify"
+        },
+        "request_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation",
+        "request_id",
+        "expected"
+      ]
+    }
+  ],
+  "$defs": {
+    "ConfigChange": {
+      "type": "object",
+      "properties": {
+        "expected_revision": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "values": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "request_id",
+        "values"
+      ]
+    }
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "manifest": {
+    "id": "org.showdevice.mock",
+    "version": "0.1.0",
+    "api": ">=1.0.0, <2.0.0",
+    "wire": 1,
+    "executable": "sd-plugin-mock.exe",
+    "required": [
+      "state.snapshot.v1",
+      "ui.declarative.v1"
+    ],
+    "matches": [
+      {
+        "vendor_id": 65535,
+        "product_id": 1
+      }
+    ]
+  },
+  "capabilities": [
+    {
+      "id": "battery.percent",
+      "readable": true,
+      "writable": false,
+      "subscribable": false,
+      "value_type": {
+        "type": "number",
+        "min": 0,
+        "max": 100,
+        "step": null
+      }
+    }
+  ],
+  "pages": [
+    {
+      "id": "overview",
+      "title": "Device status",
+      "nodes": [
+        {
+          "id": "battery_percent",
+          "component": "status",
+          "version": 1,
+          "label": "Battery (%)",
+          "binding": "battery.percent"
+        }
+      ]
+    }
+  ]
+}

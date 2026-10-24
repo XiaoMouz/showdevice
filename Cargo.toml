@@ -1,0 +1,25 @@
+[workspace]
+resolver = "2"
+members = ["core/api", "core/runtime", "transports/hid", "transports/ble", "ui/schema", "sdk", "plugins/razer", "plugins/hyperx", "plugins/rapoo", "plugins/nuphy", "plugins/mock", "features/device", "features/app", "apps/cli"]
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+schemars = "1"
+semver = "1"
+anyhow = "1"
+sd-api = { path = "core/api" }
+sd-runtime = { path = "core/runtime" }
+sd-ui-schema = { path = "ui/schema" }
+sd-sdk = { path = "sdk" }
+sd-hid = { path = "transports/hid" }
+sd-ble = { path = "transports/ble" }
+sd-device-features = { path = "features/device" }
+sd-app-features = { path = "features/app" }
+[profile.release]
+lto = "thin"
+strip = true
+

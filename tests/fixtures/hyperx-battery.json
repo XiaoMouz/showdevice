@@ -1,0 +1,14 @@
+{
+  "origin": "synthetic protocol regression fixture",
+  "response": [
+    12,
+    2,
+    3,
+    1,
+    0,
+    6,
+    88
+  ],
+  "command": 6,
+  "percent": 88
+}

@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ConfigResult",
+  "type": "object",
+  "properties": {
+    "fields": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/WriteStage"
+      }
+    },
+    "message": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "request_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "request_id",
+    "fields"
+  ],
+  "$defs": {
+    "WriteStage": {
+      "type": "string",
+      "enum": [
+        "validation_rejected",
+        "sent",
+        "acknowledged",
+        "verified",
+        "failed",
+        "uncertain"
+      ]
+    }
+  }
+}

@@ -1,0 +1,16 @@
+[package]
+name = "sd-ble"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+[dependencies]
+sd-api.workspace = true
+anyhow.workspace = true
+btleplug = { version = "0.13", optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "time", "sync"], optional = true }
+uuid = { version = "1", optional = true }
+futures-util = { version = "0.3", optional = true }
+[features]
+default = []
+native = ["dep:btleplug", "dep:tokio", "dep:uuid", "dep:futures-util"]
+

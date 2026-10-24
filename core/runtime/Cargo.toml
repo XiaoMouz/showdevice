@@ -1,0 +1,13 @@
+[package]
+name = "sd-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+[dependencies]
+serde.workspace = true
+sd-api.workspace = true
+sd-ui-schema.workspace = true
+sd-device-features.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+

@@ -1,0 +1,17 @@
+[package]
+name = "showdevice"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+[dependencies]
+sd-api.workspace = true
+sd-runtime.workspace = true
+sd-hid.workspace = true
+sd-ble.workspace = true
+sd-sdk.workspace = true
+sd-ui-schema.workspace = true
+sd-app-features.workspace = true
+serde_json.workspace = true
+schemars.workspace = true
+anyhow.workspace = true
+

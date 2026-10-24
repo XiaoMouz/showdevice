@@ -1,0 +1,10 @@
+[package]
+name = "sd-hid"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+[dependencies]
+sd-api.workspace = true
+anyhow.workspace = true
+hidapi = { version = "2", default-features = false, features = ["windows-native", "linux-native-basic-udev"] }
+
