@@ -4,21 +4,28 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Media;
-using Microsoft.UI;
 namespace ShowDevice;
 public sealed class MainWindow : Window {
     private readonly ListView devices = new() { SelectionMode = ListViewSelectionMode.Single };
-    private readonly StackPanel detail = new() { Spacing = 16, Padding = new Thickness(28) };
+    private readonly StackPanel detail = new() { Spacing = 4, Padding = new Thickness(12,0,12,24) };
     private readonly TextBlock status = new() { Text = "Loading…", TextWrapping = TextWrapping.Wrap };
     private readonly InfoBar error = new() { IsClosable = false, Severity = InfoBarSeverity.Warning };
     private readonly Button refresh = new() { Content = "Refresh", IsEnabled = false };
     private readonly Dictionary<string, JsonElement> models = new();
+    private readonly Dictionary<string,ListViewItem> deviceItems = new();
+    private readonly StackPanel readings = new(){Spacing=4};
+    private readonly InfoBar deviceError = new(){IsClosable=false,Severity=InfoBarSeverity.Warning,Title="Reading unavailable"};
+    private bool applying;
+    private JsonElement? renderedDevice;
+    private bool emptyRendered;
     private Process? core;
     private string? selected;
     private string previous = "";
+    private TextBlock? updated;
+    private readonly DispatcherTimer clock = new(){Interval=TimeSpan.FromSeconds(1)};
     public MainWindow() {
         Title = "ShowDevice";
-        AppWindow.Resize(new Windows.Graphics.SizeInt32(920,620));
+        AppWindow.Resize(new Windows.Graphics.SizeInt32(1080,740));
         SystemBackdrop = new MicaBackdrop();
         var root = new Grid { Padding = new Thickness(24), RowSpacing = 16 };
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -33,19 +40,20 @@ public sealed class MainWindow : Window {
         header.Children.Add(heading); header.Children.Add(refresh); Grid.SetColumn(refresh,1);
         root.Children.Add(header); root.Children.Add(error); Grid.SetRow(error,1);
         var body=new Grid { ColumnSpacing=20 };
-        body.ColumnDefinitions.Add(new ColumnDefinition { Width=new GridLength(260) });
+        body.ColumnDefinitions.Add(new ColumnDefinition { Width=new GridLength(300) });
         body.ColumnDefinitions.Add(new ColumnDefinition());
         AutomationProperties.SetName(devices,"Connected devices");
         body.Children.Add(devices);
         var scroll=new ScrollViewer { Content=detail, HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled };
         body.Children.Add(scroll);Grid.SetColumn(scroll,1);root.Children.Add(body);Grid.SetRow(body,2);
         Content=root;
-        devices.SelectionChanged += (_,_) => { if(devices.SelectedItem is ListViewItem item && item.Tag is string id){selected=id;Render();} };
+        clock.Tick += (_,_) => {if(updated!=null&&selected!=null&&models.TryGetValue(selected,out var current))DeviceVisuals.UpdateTime(updated,current);};clock.Start();
+        devices.SelectionChanged += (_,_) => { if(!applying&&devices.SelectedItem is ListViewItem item && item.Tag is string id){selected=id;Render();} };
         refresh.Click += async (_,_) => {
             try { if(core is { HasExited:false }) { refresh.IsEnabled=false;await core.StandardInput.WriteLineAsync("refresh");await core.StandardInput.FlushAsync();await Task.Delay(2000);refresh.IsEnabled=true; } }
             catch(Exception e){ ShowError(e.Message); }
         };
-        Closed += (_,_) => {try{if(core is { HasExited:false })core.Kill(entireProcessTree:true);}catch{}core?.Dispose();};
+        Closed += (_,_) => {clock.Stop();try{if(core is { HasExited:false })core.Kill(entireProcessTree:true);}catch{}core?.Dispose();};
         _=StartCore();
     }
     private async Task StartCore(){
@@ -86,32 +94,52 @@ public sealed class MainWindow : Window {
         if(signature==previous)return;previous=signature;
         var diagnostics=snapshot.GetProperty("diagnostics").EnumerateArray().Select(x=>x.GetString()).Where(x=>!string.IsNullOrWhiteSpace(x)).ToArray();
         error.IsOpen=diagnostics.Length>0;error.Message=string.Join("\n",diagnostics);
-        models.Clear();devices.Items.Clear();
-        foreach(var item in data.EnumerateArray()){
-            string id=item.GetProperty("device").GetProperty("id").GetString()!;
-            models[id]=item.Clone();
-            var row=new StackPanel{Spacing=4};
-            row.Children.Add(new TextBlock{Text=item.GetProperty("device").GetProperty("name").GetString(),TextWrapping=TextWrapping.Wrap});
-            row.Children.Add(new TextBlock{Text=PluginPage.Value(item.GetProperty("state"),"battery.percent"),Opacity=.7});
-            devices.Items.Add(new ListViewItem{Content=row,Tag=id});
-        }
+        applying=true;
+        try{
+            var incoming=data.EnumerateArray().ToArray();
+            var ids=incoming.Select(item=>item.GetProperty("device").GetProperty("id").GetString()!).ToHashSet();
+            foreach(var id in deviceItems.Keys.Where(id=>!ids.Contains(id)).ToArray()){
+                devices.Items.Remove(deviceItems[id]);deviceItems.Remove(id);models.Remove(id);
+            }
+            foreach(var item in incoming){
+                string id=item.GetProperty("device").GetProperty("id").GetString()!;
+                if(!deviceItems.TryGetValue(id,out var row)){
+                    row=new ListViewItem{Content=DeviceVisuals.ListRow(item),Tag=id,HorizontalContentAlignment=HorizontalAlignment.Stretch};
+                    deviceItems.Add(id,row);devices.Items.Add(row);
+                }else if(!ViewChanges.ListRow(models[id],item)){
+                    row.Content=DeviceVisuals.ListRow(item);
+                }
+                models[id]=item.Clone();
+            }
+            if(selected==null||!models.ContainsKey(selected))selected=models.Keys.FirstOrDefault();
+            var target=selected!=null?deviceItems[selected]:null;
+            if(!ReferenceEquals(devices.SelectedItem,target))devices.SelectedItem=target;
+        }finally{applying=false;}
         status.Visibility=Visibility.Collapsed;
-        if(selected==null||!models.ContainsKey(selected))selected=models.Keys.FirstOrDefault();
-        foreach(ListViewItem item in devices.Items)if((string)item.Tag==selected)devices.SelectedItem=item;
         Render();
     }
     private void Render(){
-        detail.Children.Clear();
         if(selected==null||!models.TryGetValue(selected,out var device)){
+            if(emptyRendered)return;
+            updated=null;renderedDevice=null;detail.Children.Clear();readings.Children.Clear();emptyRendered=true;
             detail.Children.Add(new TextBlock{Text="Connect a supported device",FontSize=22});
             detail.Children.Add(new TextBlock{Text="Connect a receiver or USB cable, then refresh.",TextWrapping=TextWrapping.Wrap});
             return;
         }
-        detail.Children.Add(new TextBlock{Text=device.GetProperty("device").GetProperty("name").GetString(),FontSize=22,TextWrapping=TextWrapping.Wrap});
-        if(device.TryGetProperty("error",out var issue)&&issue.ValueKind==JsonValueKind.String)
-            detail.Children.Add(new InfoBar{IsOpen=true,IsClosable=false,Severity=InfoBarSeverity.Warning,Title="Reading unavailable",Message=issue.GetString()});
-        PluginPage.Render(detail,device);
+        bool headerChanged=renderedDevice is not JsonElement oldHeader||!ViewChanges.Header(oldHeader,device);
+        bool bodyChanged=headerChanged||renderedDevice is not JsonElement oldBody||!ViewChanges.Body(oldBody,device);
+        if(headerChanged){
+            detail.Children.Clear();updated=new TextBlock();
+            detail.Children.Add(DeviceVisuals.Header(device,updated));
+            detail.Children.Add(deviceError);detail.Children.Add(readings);
+        }
+        if(bodyChanged){readings.Children.Clear();PluginPage.Render(readings,device);}
+        if(updated!=null)DeviceVisuals.UpdateTime(updated,device);
+        deviceError.IsOpen=device.TryGetProperty("error",out var issue)&&issue.ValueKind==JsonValueKind.String;
+        deviceError.Message=deviceError.IsOpen?issue.GetString():null;
+        renderedDevice=device;emptyRendered=false;
     }
     private void ShowError(string message){error.IsOpen=true;error.Title="Unable to read devices";error.Message=message;}
 }
+
 

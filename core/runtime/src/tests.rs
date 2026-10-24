@@ -1,4 +1,21 @@
 use super::*;
+#[test]
+fn artwork_is_optional_local_and_scoped_to_package() {
+    let mut p = package();
+    p.directory = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins/nuphy");
+    assert!(p.product_image().is_none());
+    p.descriptor.product_image = Some("assets/product-trimmed.png".into());
+    assert!(p.product_image().is_some());
+    for invalid in [
+        "missing.jpg",
+        "https://example.com/image.jpg",
+        "../hyperx/assets/product-trimmed.png",
+        "plugin.json",
+    ] {
+        p.descriptor.product_image = Some(invalid.into());
+        assert!(p.product_image().is_none(), "{invalid}");
+    }
+}
 fn device() -> Device {
     Device {
         feature_report_ids: vec![],

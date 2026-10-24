@@ -124,6 +124,21 @@ fn package(root: &Path) -> Result<()> {
         d.manifest.executable = filename.clone();
         let out = dest.join(brand);
         std::fs::create_dir_all(&out)?;
+        if let Some(ref image) = d.product_image {
+            let relative = Path::new(image);
+            anyhow::ensure!(
+                relative
+                    .components()
+                    .all(|c| matches!(c, std::path::Component::Normal(_))),
+                "invalid artwork path"
+            );
+            let source_image = source.join(relative);
+            if source_image.is_file() {
+                let destination = out.join(relative);
+                std::fs::create_dir_all(destination.parent().context("artwork directory")?)?;
+                std::fs::copy(source_image, destination)?;
+            }
+        }
         std::fs::write(out.join("plugin.json"), serde_json::to_vec_pretty(&d)?)?;
         std::fs::copy(
             source.join("permissions.json"),
@@ -219,20 +234,9 @@ fn monitor(root: &Path, watch: bool, demo: bool) -> Result<()> {
             inventory.as_ref().unwrap().devices.clone()
         };
         let current: std::collections::BTreeSet<_> = devices.iter().map(|d| d.id.clone()).collect();
-        for (id, view) in &mut views {
-            if !current.contains(id) {
-                active.remove(id);
-                retry.remove(id);
-                for r in view.state.values_mut() {
-                    r.availability = Availability::Offline;
-                }
-                view.error = Some("Device disconnected".into());
-            }
-        }
-        // Bound retained disconnected devices.
-        if views.len() > 128 {
-            views.retain(|id, _| current.contains(id));
-        }
+        active.retain(|id, _| current.contains(id));
+        retry.retain(|id, _| current.contains(id));
+        views.retain(|id, _| current.contains(id));
         let mut errors = diagnostics.clone();
         for device in devices {
             let package = match sd_runtime::select(&packages, &device) {
@@ -272,7 +276,8 @@ fn monitor(root: &Path, watch: bool, demo: bool) -> Result<()> {
                         })
                         .collect();
                     let view = DeviceView {
- device_kind: package.descriptor.device_kind,
+                        product_image: package.product_image(),
+                        device_kind: package.descriptor.device_kind,
                         device: device.clone(),
                         plugin: package.descriptor.manifest.id.clone(),
                         state,
@@ -296,7 +301,8 @@ fn monitor(root: &Path, watch: bool, demo: bool) -> Result<()> {
                         views
                             .entry(device.id.clone())
                             .or_insert(DeviceView {
- device_kind: package.descriptor.device_kind,
+                                product_image: package.product_image(),
+                                device_kind: package.descriptor.device_kind,
                                 device: device.clone(),
                                 plugin: package.descriptor.manifest.id.clone(),
                                 state: State::new(),
@@ -462,7 +468,8 @@ fn new_plugin(path: &Path) -> Result<()> {
         "use sd_api::*;\nstruct Example;\nimpl sd_sdk::Plugin for Example {\nfn descriptor(&self)->Descriptor {sd_sdk::installed_descriptor().expect(\"descriptor\")}\nfn poll(&mut self,_:&Device,_:&mut sd_sdk::Client)->anyhow::Result<State>{Ok(State::new())}\n}\nfn main()->anyhow::Result<()>{sd_sdk::serve(Example)}\n",
     )?;
     let d = Descriptor {
- device_kind: DeviceKind::Other,
+        product_image: None,
+        device_kind: DeviceKind::Other,
         manifest: Manifest {
             id: "org.example.device".into(),
             version: "0.1.0".into(),
@@ -481,4 +488,3 @@ fn new_plugin(path: &Path) -> Result<()> {
     println!("Created {}", path.display());
     Ok(())
 }
-

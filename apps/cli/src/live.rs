@@ -22,6 +22,37 @@ struct Actor {
     control: SyncSender<Control>,
     thread: Option<std::thread::JoinHandle<()>>,
 }
+fn remove_disconnected(
+    actors: &mut BTreeMap<String, Actor>,
+    views: &mut BTreeMap<String, DeviceView>,
+    current: &BTreeSet<String>,
+) -> bool {
+    actors.retain(|id, actor| {
+        if current.contains(id) {
+            return true;
+        }
+        let _ = actor.control.try_send(Control::Stop);
+        false
+    });
+    let before = views.len();
+    views.retain(|id, _| current.contains(id));
+    before != views.len()
+}
+fn apply_update(
+    actors: &BTreeMap<String, Actor>,
+    views: &mut BTreeMap<String, DeviceView>,
+    generation: u64,
+    view: DeviceView,
+) -> bool {
+    if !actors
+        .get(&view.device.id)
+        .is_some_and(|a| a.generation == generation)
+    {
+        return false;
+    }
+    views.insert(view.device.id.clone(), view);
+    true
+}
 fn with_broker<T>(
     broker: &mut Option<Broker>,
     open: impl FnOnce() -> Result<Broker>,
@@ -47,6 +78,7 @@ fn worker(
     demo: bool,
 ) {
     let mut view = DeviceView {
+        product_image: package.product_image(),
         device_kind: package.descriptor.device_kind,
         device: device.clone(),
         plugin: package.descriptor.manifest.id.clone(),
@@ -179,69 +211,55 @@ pub fn run(root: &Path, demo: bool) -> Result<()> {
     loop {
         if Instant::now() >= scan_at {
             let devices = if demo {
-                vec![demo_device()]
+                Some(vec![demo_device()])
             } else {
                 match sd_hid::Inventory::enumerate() {
-                    Ok(i) => i.devices,
+                    Ok(i) => Some(i.devices),
                     Err(e) => {
                         diagnostics = vec![format!("Device enumeration failed: {e}")];
-                        vec![]
+                        dirty = true;
+                        None // Enumeration failure is not evidence of disconnection.
                     }
                 }
             };
-            let current: BTreeSet<_> = devices.iter().map(|d| d.id.clone()).collect();
-            actors.retain(|id, a| {
-                if current.contains(id) {
-                    return true;
-                }
-                let _ = a.control.try_send(Control::Stop);
-                if let Some(v) = views.get_mut(id) {
-                    for r in v.state.values_mut() {
-                        r.availability = Availability::Offline;
-                    }
-                    v.error = Some("Device disconnected".into());
-                }
-                dirty = true;
-                false
-            });
-            for device in devices {
-                if actors.contains_key(&device.id) {
-                    continue;
-                }
-                if actors.len() >= 16 {
-                    break;
-                }
-                let package = match sd_runtime::select(&packages, &device) {
-                    Ok(Some(p)) => p.clone(),
-                    Ok(None) => continue,
-                    Err(e) => {
-                        let error = e.to_string();
-                        if !diagnostics.contains(&error) {
-                            diagnostics.push(error);
-                            dirty = true;
-                        }
+            if let Some(devices) = devices {
+                let current: BTreeSet<_> = devices.iter().map(|d| d.id.clone()).collect();
+                dirty |= remove_disconnected(&mut actors, &mut views, &current);
+                for device in devices {
+                    if actors.contains_key(&device.id) {
                         continue;
                     }
-                };
-                generation += 1;
-                let g = generation;
-                let id = device.id.clone();
-                let (control, jobs) = mpsc::sync_channel(1);
-                let events = tx.clone();
-                let thread =
-                    std::thread::spawn(move || worker(package, device, g, events, jobs, demo));
-                actors.insert(
-                    id,
-                    Actor {
-                        generation: g,
-                        control,
-                        thread: Some(thread),
-                    },
-                );
-            }
-            if views.len() > 16 {
-                views.retain(|id, _| current.contains(id));
-                dirty = true;
+                    if actors.len() >= 16 {
+                        break;
+                    }
+                    let package = match sd_runtime::select(&packages, &device) {
+                        Ok(Some(p)) => p.clone(),
+                        Ok(None) => continue,
+                        Err(e) => {
+                            let error = e.to_string();
+                            if !diagnostics.contains(&error) {
+                                diagnostics.push(error);
+                                dirty = true;
+                            }
+                            continue;
+                        }
+                    };
+                    generation += 1;
+                    let g = generation;
+                    let id = device.id.clone();
+                    let (control, jobs) = mpsc::sync_channel(1);
+                    let events = tx.clone();
+                    let thread =
+                        std::thread::spawn(move || worker(package, device, g, events, jobs, demo));
+                    actors.insert(
+                        id,
+                        Actor {
+                            generation: g,
+                            control,
+                            thread: Some(thread),
+                        },
+                    );
+                }
             }
             scan_at = Instant::now() + Duration::from_secs(5);
         }
@@ -258,16 +276,7 @@ pub fn run(root: &Path, demo: bool) -> Result<()> {
         }
         match rx.recv_timeout(scan_at.saturating_duration_since(Instant::now())) {
             Ok(Event::Update { generation, view }) => {
-                if actors
-                    .get(&view.device.id)
-                    .is_some_and(|a| a.generation == generation)
-                {
-                    views.insert(view.device.id.clone(), *view);
-                    if views.len() > 16 {
-                        views.retain(|id, _| actors.contains_key(id));
-                    }
-                    dirty = true;
-                }
+                dirty |= apply_update(&actors, &mut views, generation, *view);
             }
             Ok(Event::Refresh) => {
                 if refresh_at.elapsed() >= Duration::from_secs(2) {
@@ -298,6 +307,64 @@ pub fn run(root: &Path, demo: bool) -> Result<()> {
 #[cfg(test)]
 mod reconnect_tests {
     use super::*;
+    fn view(id: &str) -> DeviceView {
+        let mut device = demo_device();
+        device.id = id.into();
+        DeviceView {
+            product_image: None,
+            device_kind: DeviceKind::Other,
+            device,
+            plugin: "test".into(),
+            state: State::new(),
+            pages: vec![],
+            capabilities: vec![],
+            error: None,
+        }
+    }
+    fn actor(generation: u64) -> (Actor, Receiver<Control>) {
+        let (control, rx) = mpsc::sync_channel(1);
+        (
+            Actor {
+                generation,
+                control,
+                thread: None,
+            },
+            rx,
+        )
+    }
+    #[test]
+    fn disconnect_removes_view_and_late_updates_cannot_restore_it() {
+        let (a, rx) = actor(1);
+        let mut actors = BTreeMap::from([("a".into(), a)]);
+        let mut views = BTreeMap::from([("a".into(), view("a"))]);
+        assert!(remove_disconnected(
+            &mut actors,
+            &mut views,
+            &BTreeSet::new()
+        ));
+        assert!(actors.is_empty() && views.is_empty());
+        assert!(matches!(rx.try_recv(), Ok(Control::Stop)));
+        assert!(!apply_update(&actors, &mut views, 1, view("a")));
+        let (replacement, _rx) = actor(2);
+        actors.insert("a".into(), replacement);
+        assert!(!apply_update(&actors, &mut views, 1, view("a")));
+        assert!(apply_update(&actors, &mut views, 2, view("a")));
+        assert_eq!(views.len(), 1);
+    }
+    #[test]
+    fn remaining_devices_and_read_errors_are_not_removed() {
+        let (a, _rx_a) = actor(1);
+        let (b, _rx_b) = actor(2);
+        let mut actors = BTreeMap::from([("a".into(), a), ("b".into(), b)]);
+        let mut connected = view("b");
+        connected.error = Some("temporary read failure".into());
+        let mut views = BTreeMap::from([("a".into(), view("a")), ("b".into(), connected)]);
+        let current = BTreeSet::from(["b".into()]);
+        assert!(remove_disconnected(&mut actors, &mut views, &current));
+        assert_eq!(views.keys().cloned().collect::<Vec<_>>(), vec!["b"]);
+        assert!(views["b"].error.is_some());
+        assert!(!remove_disconnected(&mut actors, &mut views, &current));
+    }
     fn query(b: &mut Broker) -> Result<Vec<u8>> {
         b.query(
             Query::HidInput { response_len: 1 },
@@ -338,4 +405,3 @@ mod reconnect_tests {
         assert!(!broker.as_ref().unwrap().needs_reopen());
     }
 }
-

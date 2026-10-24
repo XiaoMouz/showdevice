@@ -219,6 +219,10 @@
             "$ref": "#/$defs/Capability"
           }
         },
+        "device_kind": {
+          "$ref": "#/$defs/DeviceKind",
+          "default": "other"
+        },
         "manifest": {
           "$ref": "#/$defs/Manifest"
         },
@@ -227,12 +231,28 @@
           "items": {
             "$ref": "#/$defs/UiPage"
           }
+        },
+        "product_image": {
+          "description": "Optional package-relative PNG/JPEG product artwork. Never a network URL.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
         "manifest",
         "capabilities",
         "pages"
+      ]
+    },
+    "DeviceKind": {
+      "type": "string",
+      "enum": [
+        "keyboard",
+        "mouse",
+        "headset",
+        "other"
       ]
     },
     "DeviceMatch": {

@@ -254,6 +254,9 @@ pub struct UiPage {
 }
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Descriptor {
+    /// Optional package-relative PNG/JPEG product artwork. Never a network URL.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub product_image: Option<String>,
     #[serde(default)]
     pub device_kind: DeviceKind,
     pub manifest: Manifest,
@@ -383,6 +386,9 @@ pub enum ConfigRequest {
 }
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct DeviceView {
+    /// Host-resolved local artwork path; absent when unavailable or invalid.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub product_image: Option<String>,
     #[serde(default)]
     pub device_kind: DeviceKind,
     pub device: Device,

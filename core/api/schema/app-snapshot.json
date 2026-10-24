@@ -213,6 +213,15 @@
         "connection"
       ]
     },
+    "DeviceKind": {
+      "type": "string",
+      "enum": [
+        "keyboard",
+        "mouse",
+        "headset",
+        "other"
+      ]
+    },
     "DeviceView": {
       "type": "object",
       "properties": {
@@ -224,6 +233,10 @@
         },
         "device": {
           "$ref": "#/$defs/Device"
+        },
+        "device_kind": {
+          "$ref": "#/$defs/DeviceKind",
+          "default": "other"
         },
         "error": {
           "type": [
@@ -239,6 +252,13 @@
         },
         "plugin": {
           "type": "string"
+        },
+        "product_image": {
+          "description": "Host-resolved local artwork path; absent when unavailable or invalid.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "state": {
           "type": "object",

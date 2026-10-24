@@ -30,6 +30,28 @@ pub struct Package {
     pub permissions: Permissions,
 }
 impl Package {
+    /// Artwork is optional: invalid/missing resources fall back without disabling a device.
+    pub fn product_image(&self) -> Option<String> {
+        let relative = Path::new(self.descriptor.product_image.as_deref()?);
+        if relative
+            .components()
+            .any(|c| !matches!(c, std::path::Component::Normal(_)))
+        {
+            return None;
+        }
+        let path = self.directory.join(relative).canonicalize().ok()?;
+        let root = self.directory.canonicalize().ok()?;
+        if !path.starts_with(root)
+            || !path.is_file()
+            || path.metadata().ok()?.len() > 4 * 1024 * 1024
+        {
+            return None;
+        }
+        match path.extension()?.to_str()?.to_ascii_lowercase().as_str() {
+            "png" | "jpg" | "jpeg" => Some(path.to_string_lossy().into_owned()),
+            _ => None,
+        }
+    }
     pub fn load(directory: &Path) -> Result<Self> {
         let directory = directory.canonicalize()?;
         fn bounded<T: serde::de::DeserializeOwned>(p: &Path) -> Result<T> {
