@@ -175,6 +175,7 @@ impl BleBackend for NativeBle {
         for (p, name) in result {
             let id = p.id().to_string();
             devices.push(Device {
+                feature_report_ids: vec![],
                 id: id.clone(),
                 name,
                 vendor_id: 0,

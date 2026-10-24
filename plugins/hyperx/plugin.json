@@ -68,5 +68,6 @@
         }
       ]
     }
-  ]
+  ],
+  "device_kind": "headset"
 }

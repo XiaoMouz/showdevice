@@ -39,5 +39,6 @@
         }
       ]
     }
-  ]
+  ],
+  "device_kind": "mouse"
 }

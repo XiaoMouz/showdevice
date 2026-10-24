@@ -11,7 +11,13 @@ pub const API_VERSION: &str = "1.0.0";
 pub const WIRE_VERSION: u16 = 1;
 pub const MAX_FRAME: usize = 65_536;
 pub const MAX_APP_FRAME: usize = 2_097_152;
-pub const HOST_CAPABILITIES: &[&str] = &["hid.query.v1", "state.snapshot.v1", "ui.declarative.v1"];
+pub const HOST_CAPABILITIES: &[&str] = &[
+    "hid.query.v1",
+    "state.snapshot.v1",
+    "ui.declarative.v1",
+    "hid.feature-response-id.v1",
+    "hid.match-reports.v1",
+];
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -22,6 +28,8 @@ pub enum Connection {
 }
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Device {
+    #[serde(default)]
+    pub feature_report_ids: Vec<u8>,
     pub id: String,
     pub name: String,
     pub vendor_id: u16,
@@ -35,6 +43,10 @@ pub struct Device {
 }
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct DeviceMatch {
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub feature_report_ids: Vec<u8>,
     pub vendor_id: u16,
     #[serde(default)]
     pub product_id: Option<u16>,
@@ -52,6 +64,11 @@ pub struct DeviceMatch {
 impl DeviceMatch {
     pub fn score(&self, d: &Device) -> Option<u16> {
         if self.vendor_id != d.vendor_id
+            || self.name.as_ref().is_some_and(|v| v != &d.name)
+            || !self
+                .feature_report_ids
+                .iter()
+                .all(|id| d.feature_report_ids.contains(id))
             || self.product_id.is_some_and(|v| v != d.product_id)
             || self.interface.is_some_and(|v| v != d.interface)
             || self.usage_page.is_some_and(|v| v != d.usage_page)
@@ -70,7 +87,9 @@ impl DeviceMatch {
                 + u16::from(self.usage_page.is_some())
                 + u16::from(self.usage.is_some())
                 + u16::from(self.connection.is_some())
-                + u16::from(self.firmware.is_some()),
+                + u16::from(self.firmware.is_some())
+                + u16::from(self.name.is_some())
+                + u16::from(!self.feature_report_ids.is_empty()),
         )
     }
 }
@@ -235,9 +254,22 @@ pub struct UiPage {
 }
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Descriptor {
+    #[serde(default)]
+    pub device_kind: DeviceKind,
     pub manifest: Manifest,
     pub capabilities: Vec<Capability>,
     pub pages: Vec<UiPage>,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DeviceKind {
+    Keyboard,
+    Mouse,
+    Headset,
+    #[default]
+    #[serde(other)]
+    Other,
 }
 
 /// Trusted local packages supply read-query recipes. Plugins invoke names, not
@@ -246,6 +278,8 @@ pub struct Descriptor {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Query {
     HidFeature {
+        #[serde(default)]
+        response_report_id: Option<u8>,
         request: Vec<u8>,
         response_len: usize,
         delay_ms: u16,
@@ -349,6 +383,8 @@ pub enum ConfigRequest {
 }
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct DeviceView {
+    #[serde(default)]
+    pub device_kind: DeviceKind,
     pub device: Device,
     pub plugin: String,
     pub state: State,

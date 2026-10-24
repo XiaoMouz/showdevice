@@ -1,6 +1,7 @@
 use super::*;
 fn device() -> Device {
     Device {
+        feature_report_ids: vec![],
         id: "test".into(),
         name: "Test".into(),
         vendor_id: 65535,

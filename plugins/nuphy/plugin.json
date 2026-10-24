@@ -1,15 +1,29 @@
 {
   "manifest": {
     "id": "org.showdevice.nuphy",
-    "version": "0.1.0",
+    "version": "0.4.0",
     "api": ">=1.0.0, <2.0.0",
     "wire": 1,
     "executable": "sd-plugin-nuphy.exe",
     "required": [
       "state.snapshot.v1",
-      "ui.declarative.v1"
+      "ui.declarative.v1",
+      "hid.feature-response-id.v1",
+      "hid.match-reports.v1"
     ],
-    "matches": []
+    "matches": [
+      {
+        "connection": "usb",
+        "usage": 1,
+        "product_id": 591,
+        "name": "NuPhy Halo96",
+        "usage_page": 65280,
+        "vendor_id": 1452,
+        "feature_report_ids": [
+          5
+        ]
+      }
+    ]
   },
   "capabilities": [
     {
@@ -23,6 +37,65 @@
         "max": 100,
         "step": null
       }
+    },
+    {
+      "writable": false,
+      "subscribable": false,
+      "value_type": {
+        "type": "text"
+      },
+      "readable": true,
+      "id": "lighting.effect"
+    },
+    {
+      "writable": false,
+      "subscribable": false,
+      "value_type": {
+        "min": 0,
+        "type": "number",
+        "max": 255
+      },
+      "readable": true,
+      "id": "keyboard.debounce_ms"
+    },
+    {
+      "writable": false,
+      "value_type": {
+        "type": "choice",
+        "values": [
+          "Windows",
+          "macOS"
+        ]
+      },
+      "id": "keyboard.os_mode",
+      "subscribable": false,
+      "readable": true
+    },
+    {
+      "subscribable": false,
+      "value_type": {
+        "values": [
+          "USB",
+          "2.4 GHz",
+          "Bluetooth"
+        ],
+        "type": "choice"
+      },
+      "writable": false,
+      "readable": true,
+      "id": "keyboard.connection_mode"
+    },
+    {
+      "subscribable": false,
+      "value_type": {
+        "max": 3,
+        "step": 1,
+        "min": 1,
+        "type": "number"
+      },
+      "writable": false,
+      "readable": true,
+      "id": "keyboard.bluetooth_channel"
     }
   ],
   "pages": [
@@ -36,8 +109,49 @@
           "version": 1,
           "label": "Battery (%)",
           "binding": "battery.percent"
+        },
+        {
+          "binding": "lighting.effect",
+          "label": "Backlight",
+          "component": "status",
+          "version": 1,
+          "id": "lighting_effect"
+        },
+        {
+          "binding": "keyboard.debounce_ms",
+          "label": "Debounce (ms)",
+          "component": "status",
+          "version": 1,
+          "id": "keyboard_debounce"
+        },
+        {
+          "label": "Key mode",
+          "binding": "keyboard.os_mode",
+          "id": "keyboard_os_mode",
+          "component": "status",
+          "version": 1
+        },
+        {
+          "version": 1,
+          "binding": "keyboard.connection_mode",
+          "component": "status",
+          "label": "Connection mode",
+          "id": "keyboard_connection_mode"
+        },
+        {
+          "binding": "keyboard.bluetooth_channel",
+          "visible_when": {
+            "binding": "keyboard.connection_mode",
+            "op": "equals",
+            "value": "Bluetooth"
+          },
+          "version": 1,
+          "id": "keyboard_bluetooth_channel",
+          "component": "status",
+          "label": "Bluetooth channel"
         }
       ]
     }
-  ]
+  ],
+  "device_kind": "keyboard"
 }

@@ -22,6 +22,22 @@ struct Actor {
     control: SyncSender<Control>,
     thread: Option<std::thread::JoinHandle<()>>,
 }
+fn with_broker<T>(
+    broker: &mut Option<Broker>,
+    open: impl FnOnce() -> Result<Broker>,
+    poll: impl FnOnce(&mut Broker) -> Result<T>,
+) -> Result<T> {
+    if broker.is_none() {
+        *broker = Some(open()?);
+    }
+    let result = poll(broker.as_mut().unwrap());
+    if broker.as_ref().is_some_and(Broker::needs_reopen) {
+        // Drop the stale handle even if the HID path never disappeared between scans.
+        *broker = None;
+    }
+    result
+}
+
 fn worker(
     package: Package,
     device: Device,
@@ -31,6 +47,7 @@ fn worker(
     demo: bool,
 ) {
     let mut view = DeviceView {
+        device_kind: package.descriptor.device_kind,
         device: device.clone(),
         plugin: package.descriptor.manifest.id.clone(),
         state: package
@@ -49,18 +66,8 @@ fn worker(
         capabilities: package.descriptor.capabilities.clone(),
         error: None,
     };
-    let started = (|| -> Result<(Session, Broker)> {
-        let broker = if demo {
-            Broker::new(|_| Ok(vec![]))
-        } else {
-            let inventory = sd_hid::Inventory::enumerate()?;
-            let mut handle = inventory.open(&device.id)?;
-            Broker::new(move |q| handle.execute(q).map_err(|e| e.to_string()))
-        };
-        Ok((Session::launch(&package, &device)?, broker))
-    })();
-    let (mut session, mut broker) = match started {
-        Ok(v) => v,
+    let mut session = match Session::launch(&package, &device) {
+        Ok(session) => session,
         Err(e) => {
             view.error = Some(format!("{e}. Reconnect the device to retry."));
             let _ = events.send(Event::Update {
@@ -70,8 +77,41 @@ fn worker(
             return;
         }
     };
+    let mut broker = None;
     loop {
-        match session.poll(&mut broker) {
+        let result = with_broker(
+            &mut broker,
+            || {
+                if demo {
+                    return Ok(Broker::new(|_| Ok(vec![])));
+                }
+                let inventory = sd_hid::Inventory::enumerate()?;
+                let current = inventory
+                    .devices
+                    .iter()
+                    .find(|d| d.id == device.id)
+                    .context("Device is reconnecting")?;
+                anyhow::ensure!(
+                    package
+                        .descriptor
+                        .manifest
+                        .matches
+                        .iter()
+                        .any(|m| m.score(current).is_some()),
+                    "Device no longer matches plugin"
+                );
+                let mut handle = inventory.open(&device.id)?;
+                Ok(Broker::new(move |q| {
+                    handle.execute(q).map_err(|e| format!("{e:#}"))
+                }))
+            },
+            |broker| session.poll(broker),
+        );
+        if broker.as_ref().is_some_and(|b| !b.is_healthy()) {
+            session.stop();
+        }
+        let retrying = result.is_err();
+        match result {
             Ok(state) => {
                 sd_device_features_mark_stale(&mut view.state);
                 view.state.extend(state);
@@ -98,7 +138,7 @@ fn worker(
         if !session.active {
             return;
         }
-        match control.recv_timeout(Duration::from_secs(30)) {
+        match control.recv_timeout(Duration::from_secs(if retrying { 3 } else { 30 })) {
             Ok(Control::Stop) | Err(mpsc::RecvTimeoutError::Disconnected) => return,
             _ => {}
         }
@@ -254,3 +294,48 @@ pub fn run(root: &Path, demo: bool) -> Result<()> {
     // Workers receive shutdown immediately while idle, or after their bounded poll.
     Ok(())
 }
+
+#[cfg(test)]
+mod reconnect_tests {
+    use super::*;
+    fn query(b: &mut Broker) -> Result<Vec<u8>> {
+        b.query(
+            Query::HidInput { response_len: 1 },
+            Duration::from_millis(100),
+        )
+    }
+    #[test]
+    fn stale_handle_is_replaced_without_a_path_change() {
+        let mut broker = Some(Broker::new(|_| Err("device disconnected".into())));
+        assert!(with_broker(&mut broker, || panic!("existing handle"), query).is_err());
+        assert!(broker.is_none());
+        assert_eq!(
+            with_broker(&mut broker, || Ok(Broker::new(|_| Ok(vec![42]))), query).unwrap(),
+            vec![42]
+        );
+        assert_eq!(
+            with_broker(
+                &mut broker,
+                || panic!("healthy handle must be reused"),
+                query
+            )
+            .unwrap(),
+            vec![42]
+        );
+    }
+    #[test]
+    fn failed_open_can_recover_on_next_attempt() {
+        let mut broker = None;
+        assert!(with_broker(&mut broker, || anyhow::bail!("not ready"), query).is_err());
+        assert!(broker.is_none());
+        assert!(with_broker(&mut broker, || Ok(Broker::new(|_| Ok(vec![1]))), query).is_ok());
+    }
+    #[test]
+    fn retired_transport_is_not_reopened() {
+        let mut broker = Some(Broker::new(|_| Ok(vec![0; 2])));
+        assert!(with_broker(&mut broker, || panic!("existing handle"), query).is_err());
+        assert!(!broker.as_ref().unwrap().is_healthy());
+        assert!(!broker.as_ref().unwrap().needs_reopen());
+    }
+}
+

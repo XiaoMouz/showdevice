@@ -69,11 +69,12 @@ pub fn validate_permissions(p: &Permissions) -> Result<()> {
                 request,
                 response_len,
                 delay_ms,
+                ..
             } => {
                 if request.is_empty()
                     || request.len() > 1024
                     || *response_len == 0
-                    || *response_len > 1024
+                    || *response_len > 4096
                     || *delay_ms > 100
                 {
                     bail!("invalid feature query");
@@ -112,6 +113,7 @@ pub struct Broker {
     tx: SyncSender<Query>,
     rx: Receiver<Result<Vec<u8>, String>>,
     healthy: bool,
+    io_failed: bool,
 }
 impl Broker {
     pub fn new<F>(mut execute: F) -> Self
@@ -133,27 +135,44 @@ impl Broker {
             tx,
             rx,
             healthy: true,
+            io_failed: false,
         }
     }
     pub fn query(&mut self, q: Query, timeout: Duration) -> Result<Vec<u8>> {
+        let limit = match &q {
+            Query::HidFeature { response_len, .. }
+            | Query::HidOutput { response_len, .. }
+            | Query::HidInput { response_len } => (*response_len).min(4096),
+            Query::BleRead { .. } => 1024,
+        };
         if !self.healthy {
             bail!("transport retired");
         }
         self.tx.try_send(q).map_err(|_| anyhow!("transport busy"))?;
         match self.rx.recv_timeout(timeout) {
             Ok(Ok(v)) => {
-                if v.len() > 1024 {
+                if v.len() > limit {
                     self.healthy = false;
                     bail!("oversized transport result");
                 }
                 Ok(v)
             }
-            Ok(Err(e)) => Err(anyhow!(e)),
+            Ok(Err(e)) => {
+                self.io_failed = true;
+                Err(anyhow!(e))
+            }
             Err(_) => {
                 self.healthy = false;
                 Err(anyhow!("transport timeout; handle retired"))
             }
         }
+    }
+    pub fn is_healthy(&self) -> bool {
+        self.healthy
+    }
+    /// Only completed I/O errors permit replacing a handle; never a timeout.
+    pub fn needs_reopen(&self) -> bool {
+        self.healthy && self.io_failed
     }
 }
 pub struct Session {

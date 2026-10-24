@@ -150,6 +150,16 @@
         "connection": {
           "$ref": "#/$defs/Connection"
         },
+        "feature_report_ids": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "integer",
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0
+          }
+        },
         "firmware": {
           "type": [
             "string",

@@ -39,9 +39,9 @@ fn main() -> Result<()> {
                 .manifest
                 .matches
                 .iter()
-                .any(|m| m.vendor_id == d.vendor_id && m.product_id == Some(d.product_id))
+                .any(|m| m.product_id == Some(d.product_id) && m.score(d).is_some())
             {
-                bail!("device is outside plugin's exact VID/PID set");
+                bail!("device is outside plugin's exact device match");
             }
             let recipe = p
                 .permissions
@@ -160,6 +160,7 @@ fn schemas(out: &Path) -> Result<()> {
 }
 fn demo_device() -> Device {
     Device {
+        feature_report_ids: vec![],
         id: "demo:mock".into(),
         name: "Example device (simulated)".into(),
         vendor_id: 65535,
@@ -271,6 +272,7 @@ fn monitor(root: &Path, watch: bool, demo: bool) -> Result<()> {
                         })
                         .collect();
                     let view = DeviceView {
+ device_kind: package.descriptor.device_kind,
                         device: device.clone(),
                         plugin: package.descriptor.manifest.id.clone(),
                         state,
@@ -294,6 +296,7 @@ fn monitor(root: &Path, watch: bool, demo: bool) -> Result<()> {
                         views
                             .entry(device.id.clone())
                             .or_insert(DeviceView {
+ device_kind: package.descriptor.device_kind,
                                 device: device.clone(),
                                 plugin: package.descriptor.manifest.id.clone(),
                                 state: State::new(),
@@ -459,6 +462,7 @@ fn new_plugin(path: &Path) -> Result<()> {
         "use sd_api::*;\nstruct Example;\nimpl sd_sdk::Plugin for Example {\nfn descriptor(&self)->Descriptor {sd_sdk::installed_descriptor().expect(\"descriptor\")}\nfn poll(&mut self,_:&Device,_:&mut sd_sdk::Client)->anyhow::Result<State>{Ok(State::new())}\n}\nfn main()->anyhow::Result<()>{sd_sdk::serve(Example)}\n",
     )?;
     let d = Descriptor {
+ device_kind: DeviceKind::Other,
         manifest: Manifest {
             id: "org.example.device".into(),
             version: "0.1.0".into(),
@@ -477,3 +481,4 @@ fn new_plugin(path: &Path) -> Result<()> {
     println!("Created {}", path.display());
     Ok(())
 }
+

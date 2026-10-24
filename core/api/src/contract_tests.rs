@@ -1,4 +1,23 @@
 use crate::*;
+#[test]
+fn halo96_match_requires_model_and_request_collection() {
+    let descriptor: Descriptor =
+        serde_json::from_str(include_str!("../../../plugins/nuphy/plugin.json")).unwrap();
+    let mut device: Device = serde_json::from_value(serde_json::json!({
+        "id":"test", "name":"NuPhy Halo96", "vendor_id":1452, "product_id":591,
+        "interface":1, "usage_page":65280, "usage":1, "connection":"usb", "feature_report_ids":[5]
+    }))
+    .unwrap();
+    let matcher = &descriptor.manifest.matches[0];
+    assert!(matcher.score(&device).is_some());
+    device.name = "NuPhy Halo75".into();
+    assert!(matcher.score(&device).is_none());
+    device.name = "NuPhy Halo96".into();
+    device.feature_report_ids = vec![6];
+    assert!(matcher.score(&device).is_none());
+    device.feature_report_ids.clear();
+    assert!(matcher.score(&device).is_none());
+}
 fn manifest() -> Manifest {
     Manifest {
         id: "org.test.device".into(),

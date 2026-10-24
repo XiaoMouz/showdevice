@@ -249,6 +249,16 @@
           ],
           "default": null
         },
+        "feature_report_ids": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "integer",
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0
+          }
+        },
         "firmware": {
           "type": [
             "string",
@@ -262,6 +272,13 @@
             "null"
           ],
           "format": "int32",
+          "default": null
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ],
           "default": null
         },
         "product_id": {

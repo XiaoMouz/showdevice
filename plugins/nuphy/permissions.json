@@ -1,3 +1,18 @@
 {
-  "queries": {}
+  "queries": {
+    "lighting": {
+      "kind": "hid_feature",
+      "request": [
+        5,
+        131,
+        182,
+        0,
+        0,
+        0
+      ],
+      "response_report_id": 6,
+      "response_len": 1032,
+      "delay_ms": 50
+    }
+  }
 }
