@@ -153,16 +153,22 @@ fn worker(
         if current.stopping {
             return;
         }
-        let seconds = preferences.read().unwrap().interval(&device.id);
+        let foreground = current.wants(&device.id);
+        let interval = preferences
+            .read()
+            .unwrap()
+            .scheduled_interval(&device.id, foreground);
+        let seconds = interval.unwrap_or(3600);
+        let changed = foreground && current.revision != revision;
         if !poll_due(
-            current.wants(&device.id),
-            current.revision != revision,
+            interval.is_some(),
+            changed,
             last.map(|t| t.elapsed()),
             seconds,
         ) {
-            let wait = if !current.wants(&device.id) {
+            let wait = if interval.is_none() {
                 Duration::from_secs(3600)
-            } else if current.revision != revision {
+            } else if changed {
                 Duration::from_secs(2).saturating_sub(last.unwrap().elapsed())
             } else {
                 Duration::from_secs(seconds).saturating_sub(last.unwrap().elapsed())
@@ -176,7 +182,7 @@ fn worker(
             &mut broker,
             || {
                 if demo {
-                    return Ok(Broker::new(|_| Ok(vec![])));
+                    return Ok(crate::preview::broker(device.vendor_id));
                 }
                 let inventory = sd_hid::Inventory::enumerate()?;
                 let current = inventory
@@ -306,7 +312,7 @@ pub fn run(root: &Path, demo: bool) -> Result<()> {
     loop {
         if Instant::now() >= scan_at {
             let devices = if demo {
-                Some(vec![demo_device()])
+                Some(crate::preview::devices())
             } else {
                 match sd_hid::Inventory::enumerate() {
                     Ok(i) => Some(i.devices),

@@ -66,6 +66,7 @@ internal static class Program {
     static Process Start(string version,string[] args,string? health){
         var folder=Slot(version);var start=new ProcessStartInfo(Path.Combine(folder,"ShowDevice.exe")){UseShellExecute=false,WorkingDirectory=folder};
         if(args.Contains("--tray"))start.ArgumentList.Add("--tray");
+        if(args.Contains("--background"))start.ArgumentList.Add("--background");
         start.Environment["SHOWDEVICE_HOME"]=folder;
         start.Environment["SHOWDEVICE_INSTALL_ROOT"]=Root;
         start.Environment["SHOWDEVICE_UPDATE_HEALTH"]=health??"";

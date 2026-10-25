@@ -17,6 +17,9 @@ pub struct PollPreferences {
     pub interval_seconds: u64,
     #[serde(default)]
     pub device_intervals: BTreeMap<String, u64>,
+    /// Explicit opt-in per device; independent of visible-surface polling.
+    #[serde(default)]
+    pub background_device_intervals: BTreeMap<String, u64>,
     #[serde(default)]
     pub excluded_devices: Vec<String>,
 }
@@ -25,6 +28,7 @@ impl Default for PollPreferences {
         Self {
             interval_seconds: 30,
             device_intervals: BTreeMap::new(),
+            background_device_intervals: BTreeMap::new(),
             excluded_devices: vec![],
         }
     }
@@ -33,6 +37,11 @@ impl PollPreferences {
     pub fn valid(&self) -> bool {
         (5..=3600).contains(&self.interval_seconds)
             && self.device_intervals.len() <= 256
+            && self.background_device_intervals.len() <= 256
+            && self
+                .background_device_intervals
+                .iter()
+                .all(|(id, seconds)| id.len() <= 1024 && (5..=3600).contains(seconds))
             && self.excluded_devices.len() <= 256
             && self
                 .device_intervals
@@ -49,6 +58,15 @@ impl PollPreferences {
     pub fn excluded(&self, id: &str) -> bool {
         self.excluded_devices.iter().any(|item| item == id)
     }
+    pub fn scheduled_interval(&self, id: &str, visible: bool) -> Option<u64> {
+        if self.excluded(id) {
+            None
+        } else if visible {
+            Some(self.interval(id))
+        } else {
+            self.background_device_intervals.get(id).copied()
+        }
+    }
 }
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -56,7 +74,7 @@ pub enum AppCommand {
     Settings {
         preferences: PollPreferences,
     },
-    /// Visible native surfaces merge their interests. Empty + all=false suspends queries.
+    /// Visible surfaces merge their interests. Hidden devices poll only with explicit background opt-in.
     Visibility {
         all: bool,
         #[serde(default)]

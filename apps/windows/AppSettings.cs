@@ -4,13 +4,18 @@ internal sealed class AppSettings {
     public string Language {get;set;}="zh";
     public string Theme {get;set;}="system";
     public bool AutoUpdate {get;set;}=true;
+    public bool StartAtLogin {get;set;}
+    public Dictionary<string,BatteryReminderRule> BatteryReminders {get;set;}=new();
     public SurfacePreferences Surfaces {get;set;}=new();
     public Personalization Personalization {get;set;}=new();
     public int IntervalSeconds {get;set;}=30;
+    public int BackgroundIntervalSeconds {get;set;}=300;
     public Dictionary<string,int> DeviceIntervals {get;set;}=new();
     public HashSet<string> ExcludedDevices {get;set;}=new();
     public Dictionary<string,string> KnownDevices {get;set;}=new();
     public Dictionary<string,string> DeviceKinds {get;set;}=new();
+    public HashSet<string> BatteryDevices {get;set;}=new();
+    public HashSet<string> ChargingDevices {get;set;}=new();
     private static string PathName=>Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"ShowDevice","settings.json");
     public static AppSettings Load(string? path=null){
         path??=PathName;
@@ -22,26 +27,63 @@ internal sealed class AppSettings {
             value.Surfaces??=new();value.Surfaces.Normalize();
             value.Personalization??=new();value.Personalization.Normalize();
             value.IntervalSeconds=Math.Clamp(value.IntervalSeconds,5,3600);
+            value.BackgroundIntervalSeconds=Math.Clamp(value.BackgroundIntervalSeconds,60,3600);
             value.DeviceIntervals=(value.DeviceIntervals??new()).Where(p=>p.Value>=5&&p.Value<=3600).Take(256).ToDictionary();
             value.ExcludedDevices=(value.ExcludedDevices??new()).Take(256).ToHashSet();
-            value.KnownDevices=(value.KnownDevices??new()).Take(256).ToDictionary();
+            // Demo identities belong to the live session, never the saved catalog.
+            value.KnownDevices=(value.KnownDevices??new()).Where(p=>!IsSimulated(p.Key)).Take(256).ToDictionary();
             value.DeviceKinds=(value.DeviceKinds??new()).Where(p=>value.KnownDevices.ContainsKey(p.Key)).Take(256).ToDictionary();
+            value.BatteryReminders=(value.BatteryReminders??new()).Where(p=>p.Value!=null&&!IsSimulated(p.Key)).Take(256).ToDictionary();
+            foreach(var rule in value.BatteryReminders.Values)rule.Normalize();
+            value.BatteryDevices=(value.BatteryDevices??new()).Where(value.KnownDevices.ContainsKey).Take(256).ToHashSet();
+            value.ChargingDevices=(value.ChargingDevices??new()).Where(value.KnownDevices.ContainsKey).Take(256).ToHashSet();
             return value;
         }catch(Exception e) when(e is IOException or UnauthorizedAccessException or JsonException){return new();}
     }
     public void Save(string? path=null){
+        if(path==null&&Environment.GetEnvironmentVariable("SHOWDEVICE_DEMO")=="1")return;
         path??=PathName;
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path+".tmp",JsonSerializer.Serialize(this));File.Move(path+".tmp",path,true);
     }
+    private static bool IsSimulated(string id)=>id.StartsWith("simulation:",StringComparison.Ordinal);
+    public bool ObserveDevices(JsonElement devices){
+        bool changed=false;
+        foreach(var item in devices.EnumerateArray()){
+            var device=item.GetProperty("device");
+            string id=device.GetProperty("id").GetString()!,name=device.GetProperty("name").GetString()!;
+            if((KnownDevices.ContainsKey(id)||KnownDevices.Count<256)&&KnownDevices.GetValueOrDefault(id)!=name){KnownDevices[id]=name;changed=true;}
+            string kind=item.TryGetProperty("device_kind",out var value)?value.GetString()??"other":"other";
+            if(KnownDevices.ContainsKey(id)&&DeviceKinds.GetValueOrDefault(id)!=kind){DeviceKinds[id]=kind;changed=true;}
+            if(item.TryGetProperty("capabilities",out var capabilities)){
+                var ids=capabilities.EnumerateArray().Where(c=>c.TryGetProperty("readable",out var read)&&read.ValueKind==JsonValueKind.True).Select(c=>c.GetProperty("id").GetString()).ToHashSet();
+                changed|=ids.Contains("battery.percent")?BatteryDevices.Add(id):BatteryDevices.Remove(id);
+                changed|=ids.Contains("battery.charging")?ChargingDevices.Add(id):ChargingDevices.Remove(id);
+            }
+        }
+        return changed;
+    }
     // Wire names are defined by core/api PollPreferences.
-    public object PollPreferences()=>new {interval_seconds=IntervalSeconds,device_intervals=DeviceIntervals,excluded_devices=ExcludedDevices};
+    public Dictionary<string,int> BackgroundIntervals()=>BatteryReminders
+        .Where(p=>(p.Value.LowEnabled||p.Value.ChargedEnabled)&&!ExcludedDevices.Contains(p.Key)&&!IsSimulated(p.Key))
+        .ToDictionary(p=>p.Key,p=>p.Value.BackgroundIntervalSeconds??BackgroundIntervalSeconds);
+    public object PollPreferences()=>new {interval_seconds=IntervalSeconds,device_intervals=DeviceIntervals,background_device_intervals=BackgroundIntervals(),excluded_devices=ExcludedDevices};
 }
 internal static class L {
     public static string Language {get;set;}="zh";
     public static string T(string english)=>Language=="en"?english:Translations.GetValueOrDefault(english,english);
     private static readonly Dictionary<string,string> Translations=new(){
         ["Updates"]="更新",["Automatic updates"]="自动更新",
+        ["Start at sign-in"]="开机自启动",
+        ["Devices with reminders continue refreshing in the background."]="开启提醒的设备在后台继续刷新。",
+        ["Background refresh interval (minutes)"]="后台刷新间隔（分钟）",
+        ["Use a separate background interval"]="单独设置后台刷新间隔",
+        ["When off, follows the global background interval."]="关闭时跟随全局后台刷新间隔。",
+        ["Low battery reminder"]="低电量充电提醒",
+        ["Remind at or below (%)"]="电量低于或等于（%）",
+        ["Charging target reminder"]="充电达标提醒",
+        ["Remind at or above (%)"]="电量达到（%）",
+        ["Charging target reached"]="充电已达标",["Time to charge"]="该充电了",
         ["Updates are available in release builds"]="正式发布版支持自动更新",
         ["Downloaded; installs next time you start the app"]="已下载，下次启动应用时安装",
         ["Downloading update…"]="正在下载更新…",["Up to date"]="已是最新版本",
@@ -97,6 +139,7 @@ internal static class L {
         ["Keyboard"]="键盘",["Mouse"]="鼠标",["Headset"]="耳机",["Device"]="设备",["Power"]="电量",["Connection"]="连接",["Lighting"]="灯光",["Device settings"]="设备设置",
         ["Device status"]="设备状态",["Battery (%)"]="电量（%）",
         ["VIA protocol"]="VIA 协议版本",["Brightness level"]="亮度档位",["Lighting effect"]="灯效编号",
+        ["Simulation — no hardware is queried"]="模拟预览 · 未读取真实设备",
         ["General"]="通用",["Global refresh interval (seconds)"]="全局刷新间隔（秒）",
         ["Visible"]="显示",["Excluded"]="已排除",["Show device"]="显示设备",
         ["Follow global"]="跟随全局",["Custom"]="自定义",["Refresh interval"]="刷新间隔",["Interval (seconds)"]="间隔（秒）",

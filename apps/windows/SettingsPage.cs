@@ -53,6 +53,9 @@ internal static class SettingsPage {
         updateTimer.Tick+=(_,_)=>updateStatus.Text=UpdateIntegration.VersionLabel+" · "+UpdateIntegration.Status();
         updates.Loaded+=(_,_)=>updateTimer.Start();updates.Unloaded+=(_,_)=>updateTimer.Stop();
         var general=new StackPanel{Spacing=8};general.Children.Add(Heading("General"));
+        var startup=new ToggleSwitch{IsOn=current.StartAtLogin,OnContent="",OffContent="",MinWidth=0};
+        general.Children.Add(Panel(Field("Start at sign-in",startup,SettingIcon("\uE7E8"))));
+        startup.Toggled+=(_,_)=>{draft.StartAtLogin=startup.IsOn;Commit();};
         var language=new ComboBox{HorizontalAlignment=HorizontalAlignment.Stretch};
         language.Items.Add("简体中文");language.Items.Add("English");language.SelectedIndex=current.Language=="en"?1:0;
         general.Children.Add(Panel(Field("Language",language,SettingIcon("\uE774"))));
@@ -61,6 +64,9 @@ internal static class SettingsPage {
         theme.SelectionChanged+=(_,_)=>{draft.Theme=new[]{"system","light","dark"}[theme.SelectedIndex];Commit();};
         var interval=new NumberBox{Minimum=5,Maximum=3600,Value=current.IntervalSeconds,SpinButtonPlacementMode=NumberBoxSpinButtonPlacementMode.Compact};
         general.Children.Add(Panel(Field("Global refresh interval (seconds)",interval,SettingIcon("\uE72C"))));content.Children.Add(general);
+        var background=new NumberBox{Minimum=1,Maximum=60,Value=current.BackgroundIntervalSeconds/60.0,SpinButtonPlacementMode=NumberBoxSpinButtonPlacementMode.Compact};
+        general.Children.Add(Panel(Field("Background refresh interval (minutes)",background,SettingIcon("\uE787"))));
+        background.ValueChanged+=(_,_)=>{if(double.IsFinite(background.Value)){draft.BackgroundIntervalSeconds=(int)(Math.Clamp(background.Value,1,60)*60);Commit();}};
         language.SelectionChanged+=(_,_)=>{draft.Language=language.SelectedIndex==1?"en":"zh";Commit();};
         interval.ValueChanged+=(_,_)=>{if(!double.IsFinite(interval.Value))return;draft.IntervalSeconds=(int)Math.Clamp(interval.Value,5,3600);Commit();};
         var surfaces=new StackPanel{Spacing=8};surfaces.Children.Add(Heading("Tray and desktop"));
@@ -90,6 +96,37 @@ internal static class SettingsPage {
             section.Children.Add(Field("Refresh interval",mode));AutomationProperties.SetName(mode,name+" "+L.T("Refresh interval"));
             var seconds=new NumberBox{Minimum=5,Maximum=3600,Value=current.DeviceIntervals.GetValueOrDefault(id,current.IntervalSeconds),SpinButtonPlacementMode=NumberBoxSpinButtonPlacementMode.Compact};
             var custom=Field("Interval (seconds)",seconds);section.Children.Add(custom);AutomationProperties.SetName(seconds,name+" "+L.T("Interval (seconds)"));
+            var rule=draft.BatteryReminders.GetValueOrDefault(id)??new BatteryReminderRule();
+            var low=new ToggleSwitch{IsOn=rule.LowEnabled,OnContent="",OffContent="",MinWidth=0};
+            var lowAt=new NumberBox{Minimum=1,Maximum=99,Value=rule.LowPercent,SpinButtonPlacementMode=NumberBoxSpinButtonPlacementMode.Compact,IsEnabled=rule.LowEnabled};
+            var charged=new ToggleSwitch{IsOn=rule.ChargedEnabled,OnContent="",OffContent="",MinWidth=0};
+            var chargedAt=new NumberBox{Minimum=1,Maximum=100,Value=rule.ChargedPercent,SpinButtonPlacementMode=NumberBoxSpinButtonPlacementMode.Compact,IsEnabled=rule.ChargedEnabled};
+            if(current.BatteryDevices.Contains(id)){
+                section.Children.Add(Field("Low battery reminder",low,SettingIcon("\uE7F4")));
+                section.Children.Add(Field("Remind at or below (%)",lowAt));
+                ToolTipService.SetToolTip(low,L.T("Devices with reminders continue refreshing in the background."));
+            }
+            if(current.ChargingDevices.Contains(id)){
+                section.Children.Add(Field("Charging target reminder",charged,SettingIcon("\uE945")));
+                section.Children.Add(Field("Remind at or above (%)",chargedAt));
+            }
+            var ownBackground=new ToggleSwitch{IsOn=rule.BackgroundIntervalSeconds.HasValue,OnContent="",OffContent="",MinWidth=0};
+            var backgroundMinutes=new NumberBox{Minimum=1,Maximum=60,Value=(rule.BackgroundIntervalSeconds??current.BackgroundIntervalSeconds)/60.0,SpinButtonPlacementMode=NumberBoxSpinButtonPlacementMode.Compact};
+            var backgroundRow=Field("Background refresh interval (minutes)",backgroundMinutes);
+            if(current.BatteryDevices.Contains(id)){
+                section.Children.Add(Field("Use a separate background interval",ownBackground,SettingIcon("\uE787")));
+                section.Children.Add(backgroundRow);
+                ToolTipService.SetToolTip(ownBackground,L.T("When off, follows the global background interval."));
+            }
+            void UpdateBackground(){ownBackground.IsEnabled=rule.LowEnabled||rule.ChargedEnabled;backgroundRow.Visibility=ownBackground.IsOn?Visibility.Visible:Visibility.Collapsed;backgroundMinutes.IsEnabled=ownBackground.IsEnabled;}
+            UpdateBackground();
+            void SaveRule(){UpdateBackground();draft.BatteryReminders[id]=rule;Commit();}
+            ownBackground.Toggled+=(_,_)=>{rule.BackgroundIntervalSeconds=ownBackground.IsOn?(int)(Math.Clamp(backgroundMinutes.Value,1,60)*60):null;SaveRule();};
+            backgroundMinutes.ValueChanged+=(_,_)=>{if(ownBackground.IsOn&&double.IsFinite(backgroundMinutes.Value)){rule.BackgroundIntervalSeconds=(int)(Math.Clamp(backgroundMinutes.Value,1,60)*60);SaveRule();}};
+            low.Toggled+=(_,_)=>{rule.LowEnabled=low.IsOn;lowAt.IsEnabled=low.IsOn;SaveRule();};
+            charged.Toggled+=(_,_)=>{rule.ChargedEnabled=charged.IsOn;chargedAt.IsEnabled=charged.IsOn;SaveRule();};
+            lowAt.ValueChanged+=(_,_)=>{if(double.IsFinite(lowAt.Value)){rule.LowPercent=(int)Math.Clamp(lowAt.Value,1,99);SaveRule();}};
+            chargedAt.ValueChanged+=(_,_)=>{if(double.IsFinite(chargedAt.Value)){rule.ChargedPercent=(int)Math.Clamp(chargedAt.Value,1,100);SaveRule();}};
             void Update(){mode.IsEnabled=visible.IsOn;seconds.IsEnabled=visible.IsOn;custom.Visibility=mode.SelectedIndex==1?Visibility.Visible:Visibility.Collapsed;}
             Update();
             visible.Toggled+=(_,_)=>{if(visible.IsOn)draft.ExcludedDevices.Remove(id);else draft.ExcludedDevices.Add(id);Update();Commit();};

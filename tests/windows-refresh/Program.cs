@@ -2,6 +2,17 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using ShowDevice;
 
+if(args.Contains("--utf8-fixture")){
+    // Raw bytes emulate the Rust process, independent of Console's code page.
+    var utf8=new System.Text.UTF8Encoding(false,true);
+    using var input=new StreamReader(Console.OpenStandardInput(),utf8);
+    string line=input.ReadLine()!;
+    var bytes=utf8.GetBytes(line+"\n");
+    Console.OpenStandardOutput().Write(bytes);
+    Console.OpenStandardError().Write(bytes);
+    return;
+}
+
 const string snapshot="""
 {"device":{"id":"mouse:1","name":"Mouse"},"plugin":"test","device_kind":"mouse",
  "product_image":"C:/local/product.png","pages":[],"capabilities":[],"error":null,
@@ -9,8 +20,77 @@ const string snapshot="""
           "dpi":{"availability":"available","value":800,"updated_at_ms":1000}}}
 """;
 var original=JsonSerializer.Deserialize<JsonElement>(snapshot);
+{
+    var preferences=new AppSettings();
+    Expect(preferences.BackgroundIntervalSeconds==300&&preferences.BackgroundIntervals().Count==0,"background polling defaults to five minutes and requires reminders");
+    preferences.BatteryReminders["a"]=new(){LowEnabled=true};
+    preferences.BatteryReminders["b"]=new(){ChargedEnabled=true,BackgroundIntervalSeconds=120};
+    preferences.BatteryReminders["off"]=new(){BackgroundIntervalSeconds=60};
+    Expect(preferences.BackgroundIntervals()["a"]==300&&preferences.BackgroundIntervals()["b"]==120&&!preferences.BackgroundIntervals().ContainsKey("off"),"background intervals are per-device and disabled reminders never opt in");
+    preferences.BackgroundIntervalSeconds=600;
+    Expect(preferences.BackgroundIntervals()["a"]==600&&preferences.BackgroundIntervals()["b"]==120,"global changes affect only devices without an override");
+    preferences.BatteryReminders["b"].BackgroundIntervalSeconds=null;
+    Expect(preferences.BackgroundIntervals()["b"]==600,"turning off custom interval immediately restores global inheritance");
+    preferences.ExcludedDevices.Add("a");
+    Expect(!preferences.BackgroundIntervals().ContainsKey("a"),"excluded device cannot be opted into background polling");
+    var path=Path.GetTempFileName();
+    try{preferences.Save(path);var loaded=AppSettings.Load(path);Expect(loaded.BackgroundIntervalSeconds==600&&loaded.BatteryReminders["b"].BackgroundIntervalSeconds==null,"background settings and inheritance survive restart");}finally{File.Delete(path);}
+}
+{
+    const long now=2000000;
+    var settings=new AppSettings{BatteryReminders=new(){{"device",new(){LowEnabled=true,LowPercent=20,ChargedEnabled=true,ChargedPercent=80}}}};
+    var policy=new BatteryReminders();
+    JsonElement Sample(double percent,bool charging=false,string availability="available",long updated=now)=>JsonSerializer.SerializeToElement(new[]{new{
+        device=new{id="device",name="设备"},state=new Dictionary<string,object>{
+            ["battery.percent"]=new{availability,value=percent,updated_at_ms=updated},
+            ["battery.charging"]=new{availability,value=charging,updated_at_ms=updated}
+        }
+    }});
+    void Check(bool valid,string scenario){if(!valid)throw new Exception(scenario);Console.WriteLine("PASS "+scenario);}
+    Check(!policy.Evaluate(Sample(10,availability:"stale"),settings,now).Any(),"stale battery never notifies");
+    Check(!policy.Evaluate(Sample(10,updated:0),settings,now).Any(),"expired available readings never notify");
+    Check(policy.Evaluate(Sample(20),settings,now).Single().Charged==false,"inclusive low battery threshold notifies");
+    Check(!policy.Evaluate(Sample(19),settings,now).Any(),"repeated low readings do not notify again");
+    policy.Evaluate(JsonSerializer.SerializeToElement(Array.Empty<object>()),settings,now).ToArray();
+    Check(!policy.Evaluate(Sample(18),settings,now).Any(),"disconnect and reconnect do not reset the notification episode");
+    policy.Evaluate(Sample(25),settings,now).ToArray();
+    Check(policy.Evaluate(Sample(20),settings,now).Count()==1,"five point recovery re-arms low battery reminder");
+    Check(!policy.Evaluate(Sample(10,true),settings,now).Any(),"charging suppresses low battery alerts");
+    Check(policy.Evaluate(Sample(80,true),settings,now).Single().Charged,"charging reaches the configured target");
+    Check(!policy.Evaluate(Sample(81,true),settings,now).Any(),"charging target is not repeated");
+    policy.Evaluate(Sample(81,false),settings,now).ToArray();
+    Check(policy.Evaluate(Sample(81,true),settings,now).Count()==1,"new charging session can notify again");
+    policy.Evaluate(Sample(90,false),settings,now).ToArray();
+    var full=JsonNode.Parse(Sample(100,false).GetRawText())!;
+    full[0]!["state"]!["battery.status"]=new JsonObject{["availability"]="available",["value"]="Fully charged",["updated_at_ms"]=now};
+    Check(policy.Evaluate(JsonSerializer.SerializeToElement(full),settings,now).Single().Charged,"background polling can notify an explicitly completed charge");
+    Check(!policy.Evaluate(JsonSerializer.SerializeToElement(full),settings,now).Any(),"completed charge reminder is not repeated");
+    settings.ExcludedDevices.Add("device");
+    Check(!policy.Evaluate(Sample(10),settings,now).Any(),"excluded devices never notify");
+    var path=Path.GetTempFileName();
+    try{settings.Save(path);var loaded=AppSettings.Load(path);Check(loaded.BatteryReminders["device"].ChargedPercent==80&&loaded.BatteryReminders["device"].LowEnabled,"per-device reminder rules survive restart");}finally{File.Delete(path);}
+}
 JsonElement Changed(Action<JsonNode> change){var node=JsonNode.Parse(snapshot)!;change(node);return JsonSerializer.SerializeToElement(node);}
 void Expect(bool result,string scenario){if(!result)throw new Exception(scenario);Console.WriteLine("PASS "+scenario);}
+{
+    var start=CoreProcess.StartInfo(Environment.ProcessPath!);
+    if(Path.GetFileNameWithoutExtension(Environment.ProcessPath)=="dotnet")start.ArgumentList.Add(typeof(AppSettings).Assembly.Location);
+    start.ArgumentList.Add("--utf8-fixture");
+    using var child=System.Diagnostics.Process.Start(start)!;
+    const string unicode="雨75 标准版（模拟） · 日本語 · 🎮";
+    child.StandardInput.WriteLine(unicode);child.StandardInput.Flush();child.StandardInput.Close();
+    Expect(child.StandardOutput.ReadLine()==unicode&&child.StandardError.ReadLine()==unicode,"UTF-8 round trips over actual process stdin/stdout/stderr without BOM or code-page decoding");
+    child.WaitForExit();Expect(child.ExitCode==0,"UTF-8 fixture exits successfully");
+    var catalog=new AppSettings{KnownDevices=new(){{"simulation:keyboard","previously corrupted cache"},{"real:keyboard","old name"}}};
+    var devices=JsonSerializer.SerializeToElement(new[]{new{device=new{id="simulation:keyboard",name=unicode},device_kind="keyboard"},new{device=new{id="real:keyboard",name="雨75 标准版"},device_kind="keyboard"}});
+    Expect(catalog.ObserveDevices(devices)&&catalog.KnownDevices["simulation:keyboard"]==unicode&&catalog.KnownDevices["real:keyboard"]=="雨75 标准版","fresh snapshots replace stale catalog names for all consumers");
+    Expect(!catalog.ObserveDevices(devices),"unchanged catalog does not trigger persistence");
+    var path=Path.GetTempFileName();
+    try{
+        catalog.Save(path);var loaded=AppSettings.Load(path);
+        Expect(loaded.KnownDevices["real:keyboard"]=="雨75 标准版"&&!loaded.KnownDevices.ContainsKey("simulation:keyboard")&&!loaded.DeviceKinds.ContainsKey("simulation:keyboard"),"Unicode settings survive save/reload and legacy simulation catalog entries are discarded");
+    }finally{File.Delete(path);}
+}
 var timestamp=Changed(n=>n["state"]!["battery.percent"]!["updated_at_ms"]=2000);
 Expect(ViewChanges.Header(original,timestamp)&&ViewChanges.ListRow(original,timestamp)&&ViewChanges.Body(original,timestamp),"timestamp-only refresh preserves every visual region");
 var dpi=Changed(n=>n["state"]!["dpi"]!["value"]=1600);

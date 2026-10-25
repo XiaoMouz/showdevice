@@ -19,7 +19,7 @@ internal sealed class AppSession : IDisposable {
     public event Action<string>? Failed;
     public event Action? PreferencesChanged;
     public bool IsRunning=>core is {HasExited:false};
-    public AppSession(DispatcherQueue dispatcher){this.dispatcher=dispatcher;L.Language=Settings.Language;systemUi.ColorValuesChanged+=SystemColorsChanged;}
+    public AppSession(DispatcherQueue dispatcher){this.dispatcher=dispatcher;Settings.StartAtLogin=StartupRegistration.Enabled;L.Language=Settings.Language;systemUi.ColorValuesChanged+=SystemColorsChanged;}
     private void SystemColorsChanged(Windows.UI.ViewManagement.UISettings sender,object args)=>dispatcher.TryEnqueue(()=>{if(!disposed)ThemeChanged?.Invoke();});
     public Microsoft.UI.Xaml.ElementTheme ResolveTheme(string surface="app")=>ThemePolicy.Resolve(Settings.Theme,surface,SystemDark)=="dark"?Microsoft.UI.Xaml.ElementTheme.Dark:Microsoft.UI.Xaml.ElementTheme.Light;
     public async Task Start(){
@@ -32,7 +32,7 @@ internal sealed class AppSession : IDisposable {
             }
             string executable=Path.Combine(root??AppContext.BaseDirectory,root!=null?"dist/showdevice.exe":"showdevice.exe");
             string plugins=Path.Combine(root??AppContext.BaseDirectory,root!=null?"dist/plugins":"plugins");
-            var info=new ProcessStartInfo(executable){UseShellExecute=false,RedirectStandardOutput=true,RedirectStandardInput=true,RedirectStandardError=true,CreateNoWindow=true};
+            var info=CoreProcess.StartInfo(executable);
             info.Environment["SHOWDEVICE_POLL_PREFERENCES"]=JsonSerializer.Serialize(Settings.PollPreferences());
             info.Environment["SHOWDEVICE_VISIBILITY_MANAGED"]="1";
             info.ArgumentList.Add(Environment.GetEnvironmentVariable("SHOWDEVICE_DEMO")=="1"?"demo":"watch");info.ArgumentList.Add(plugins);
@@ -43,7 +43,15 @@ internal sealed class AppSession : IDisposable {
                 string? line=await ReadLine(core.StandardOutput);if(line==null)break;
                 using var document=JsonDocument.Parse(line,new JsonDocumentOptions{MaxDepth=64});
                 var snapshot=document.RootElement.Clone();
-                dispatcher.TryEnqueue(()=>{if(disposed)return;Latest=snapshot;Snapshot?.Invoke(snapshot);UpdateIntegration.Ready();});
+                dispatcher.TryEnqueue(()=>{
+                    if(disposed)return;
+                    // Update the shared catalog before any page consumes this snapshot,
+                    // including while the main window is hidden.
+                    if(Settings.ObserveDevices(snapshot.GetProperty("devices"))){
+                        try{Settings.Save();}catch(Exception e) when(e is IOException or UnauthorizedAccessException){Failed?.Invoke(e.Message);}
+                    }
+                    Latest=snapshot;Snapshot?.Invoke(snapshot);UpdateIntegration.Ready();
+                });
             }
             var message=await errors;
             if(!disposed)dispatcher.TryEnqueue(()=>Failed?.Invoke("Local core stopped. "+message));

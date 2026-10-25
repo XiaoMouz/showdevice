@@ -13,11 +13,12 @@ public partial class App : Application {
         instance=new Mutex(true,"Local\\ShowDevice.Native",out bool first);
         activation=new EventWaitHandle(false,EventResetMode.AutoReset,"Local\\ShowDevice.Activate");
         trayActivation=new EventWaitHandle(false,EventResetMode.AutoReset,"Local\\ShowDevice.Tray");
-        if(!first){(Environment.GetCommandLineArgs().Contains("--tray")?trayActivation:activation).Set();Exit();return;}
+        if(!first){if(!Environment.GetCommandLineArgs().Contains("--background"))(Environment.GetCommandLineArgs().Contains("--tray")?trayActivation:activation).Set();Exit();return;}
         session=new AppSession(Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread());
         var main=new MainWindow(session);window=main;
-        window.Activate();
+        if(!Environment.GetCommandLineArgs().Contains("--background"))window.Activate();
         shell=new ResidentShell(session,main);
+        if(Environment.GetCommandLineArgs().Contains("--background"))main.AppWindow.Hide();
         if(Environment.GetCommandLineArgs().Contains("--tray")){main.AppWindow.Hide();shell.ShowTray();}
         _=session.Start();
         UpdateIntegration.Begin();

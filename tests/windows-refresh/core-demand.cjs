@@ -28,6 +28,14 @@ const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
         send({type:'visibility',all:false,device_ids:['unrelated-device']});await wait(800);
         const scoped=frames.length;await wait(5600);
         assert.equal(frames.length,scoped,'unselected device kept polling');
+        const id=frames.find(frame=>frame.devices.length).devices[0].device.id;
+        send({type:'settings',preferences:{interval_seconds:5,background_device_intervals:{[id]:5}}});await wait(1000);
+        const background=frames.length;await wait(5600);
+        assert(frames.length>background,'opted-in hidden device did not poll in background');
+        send({type:'settings',preferences:{interval_seconds:5,background_device_intervals:{}}});await wait(800);
+        const stopped=frames.length;await wait(5600);
+        assert.equal(frames.length,stopped,'disabled background polling did not stop');
+        console.log('PASS background opt-in polls hidden devices and opt-out stops them');
         console.log('PASS core visibility: hidden startup, reveal, pause, re-reveal, selected devices');
     }finally{
         child.stdin.end();await wait(1000);

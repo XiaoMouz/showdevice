@@ -8,6 +8,8 @@
   <ItemGroup><Compile Include="../../apps/windows/ViewChanges.cs" Link="ViewChanges.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../../apps/windows/WindowPreferences.cs" Link="WindowPreferences.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../../apps/windows/AppSettings.cs" Link="AppSettings.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../../apps/windows/CoreProcess.cs" Link="CoreProcess.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../../apps/windows/BatteryReminders.cs" Link="BatteryReminders.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../../apps/windows/ReadingNotice.cs" Link="ReadingNotice.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../../apps/windows/SurfacePolicy.cs" Link="SurfacePolicy.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../../apps/windows/Personalization.cs" Link="Personalization.cs" /></ItemGroup>

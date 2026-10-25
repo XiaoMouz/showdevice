@@ -181,8 +181,10 @@ public sealed class MainWindow : Window {
                 bool languageChanged=next.Language!=settings.Language;
                 next.KnownDevices=new(settings.KnownDevices);
                 next.DeviceKinds=new(settings.DeviceKinds);
+                next.BatteryDevices=new(settings.BatteryDevices);next.ChargingDevices=new(settings.ChargingDevices);
                 next.Surfaces.X=session.Settings.Surfaces.X;next.Surfaces.Y=session.Settings.Surfaces.Y;
                 next.Surfaces.TrayX=session.Settings.Surfaces.TrayX;next.Surfaces.TrayY=session.Settings.Surfaces.TrayY;
+                if(next.StartAtLogin!=settings.StartAtLogin)StartupRegistration.Set(next.StartAtLogin);
                 next.Save();settings=next;L.Language=settings.Language;
                 applying=true;
                 try{foreach(var id in deviceItems.Keys.Where(settings.ExcludedDevices.Contains).ToArray()){devices.Items.Remove(deviceItems[id]);deviceItems.Remove(id);models.Remove(id);}}
@@ -294,18 +296,12 @@ public sealed class MainWindow : Window {
         string signature=data.GetRawText()+snapshot.GetProperty("diagnostics").GetRawText();
         if(signature==previous)return;previous=signature;
         var diagnostics=snapshot.GetProperty("diagnostics").EnumerateArray().Select(x=>x.GetString()).Where(x=>!string.IsNullOrWhiteSpace(x)).ToArray();
-        error.IsOpen=diagnostics.Length>0;error.Title="";error.Message=string.Join("\n",diagnostics.Select(ReadingNotice.Brief).Distinct());ToolTipService.SetToolTip(error,string.Join("\n",diagnostics));
+        bool simulation=diagnostics.Length==1&&diagnostics[0]=="SIMULATION — no hardware is queried";
+        error.Severity=simulation?InfoBarSeverity.Informational:InfoBarSeverity.Warning;
+        error.IsOpen=diagnostics.Length>0;error.Title="";error.Message=simulation?L.T("Simulation — no hardware is queried"):string.Join("\n",diagnostics.Select(ReadingNotice.Brief).Distinct());ToolTipService.SetToolTip(error,string.Join("\n",diagnostics));
         applying=true;
         try{
             var incoming=SurfacePolicy.Ordered(data.EnumerateArray().Where(item=>!settings.ExcludedDevices.Contains(item.GetProperty("device").GetProperty("id").GetString()!)),settings.Surfaces.MainOrder,item=>item.GetProperty("device").GetProperty("id").GetString()!,item=>item.GetProperty("device").GetProperty("name").GetString()!).ToArray();
-            bool knownChanged=false;
-            foreach(var item in incoming){
-                string id=item.GetProperty("device").GetProperty("id").GetString()!,name=item.GetProperty("device").GetProperty("name").GetString()!;
-                if(settings.KnownDevices.Count<256&&settings.KnownDevices.GetValueOrDefault(id)!=name){settings.KnownDevices[id]=name;knownChanged=true;}
-                var kind=DeviceVisuals.Kind(item);
-                if(settings.KnownDevices.ContainsKey(id)&&settings.DeviceKinds.GetValueOrDefault(id)!=kind){settings.DeviceKinds[id]=kind;knownChanged=true;}
-            }
-            if(knownChanged){try{settings.Save();}catch(Exception e) when(e is IOException or UnauthorizedAccessException){ShowError(e.Message);}}
             var ids=incoming.Select(item=>item.GetProperty("device").GetProperty("id").GetString()!).ToHashSet();
             foreach(var id in deviceItems.Keys.Where(id=>!ids.Contains(id)).ToArray()){
                 devices.Items.Remove(deviceItems[id]);deviceItems.Remove(id);models.Remove(id);

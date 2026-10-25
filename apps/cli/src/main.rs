@@ -7,6 +7,7 @@ use std::{
     time::{Duration, Instant},
 };
 mod live;
+mod preview;
 fn default_plugins() -> PathBuf {
     let exe = std::env::current_exe().unwrap_or_default();
     let sibling = exe.parent().unwrap_or(Path::new(".")).join("plugins");

@@ -16,7 +16,8 @@ internal static class UpdateIntegration {
         var root=InstallRoot;var launched=Environment.GetEnvironmentVariable("SHOWDEVICE_INSTALL_ROOT");
         if(root==null||launched?.TrimEnd(Path.DirectorySeparatorChar)==root)return false;
         var start=new ProcessStartInfo(Path.Combine(root,"ShowDevice.Launcher.exe")){UseShellExecute=false,CreateNoWindow=true};
-        if(Environment.GetCommandLineArgs().Contains("--tray"))start.ArgumentList.Add("--tray");Process.Start(start);return true;
+        if(Environment.GetCommandLineArgs().Contains("--tray"))start.ArgumentList.Add("--tray");
+        if(Environment.GetCommandLineArgs().Contains("--background"))start.ArgumentList.Add("--background");Process.Start(start);return true;
     }
     public static void Ready(){
         var root=InstallRoot;var health=Environment.GetEnvironmentVariable("SHOWDEVICE_UPDATE_HEALTH");

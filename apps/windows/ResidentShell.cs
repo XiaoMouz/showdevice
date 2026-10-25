@@ -14,6 +14,9 @@ internal sealed class ResidentShell : IDisposable {
     private readonly DispatcherTimer visibility=new(){Interval=TimeSpan.FromMilliseconds(650)};
     private bool locked,suspended,disposed,iconOwned;
     private string interest="";
+    private readonly BatteryReminders reminders=new();
+    private readonly Queue<BatteryReminder> notifications=new();
+    private DateTime nextNotification;
     private DateTime retryDesktop;
     private DateTime popupHidden;
     public void ShowTray(){popup.ShowPopup(Anchor());UpdateInterest(force:true);}
@@ -79,6 +82,9 @@ internal sealed class ResidentShell : IDisposable {
     }
     private void Snapshot(System.Text.Json.JsonElement snapshot){
         popup.Update();desktop.Update();
+        if(Environment.GetEnvironmentVariable("SHOWDEVICE_DEMO")!="1")
+            foreach(var reminder in reminders.Evaluate(snapshot.GetProperty("devices"),session.Settings,DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()))
+                if(notifications.Count<32)notifications.Enqueue(reminder);
         var summary=snapshot.GetProperty("devices").EnumerateArray().Take(4).Select(d=>{
             var name=d.GetProperty("device").GetProperty("name").GetString();
             var state=d.GetProperty("state");
@@ -89,6 +95,15 @@ internal sealed class ResidentShell : IDisposable {
     }
     private void Tick(){
         if(disposed)return;
+        if(!locked&&!suspended&&DateTime.UtcNow>=nextNotification&&notifications.TryDequeue(out var reminder)){
+            if(!session.Settings.ExcludedDevices.Contains(reminder.DeviceId)&&session.Settings.BatteryReminders.TryGetValue(reminder.DeviceId,out var rule)&&(reminder.Charged?rule.ChargedEnabled:rule.LowEnabled)){
+                var notification=icon;notification.Flags=0x10;
+                notification.Title=L.T(reminder.Charged?"Charging target reached":"Time to charge");
+                string message=$"{reminder.Name}: {reminder.Percent}%";
+                notification.Info=message.Length>255?message[..255]:message;notification.InfoFlags=1;
+                NativeShell.Shell_NotifyIcon(1,ref notification);nextNotification=DateTime.UtcNow.AddSeconds(12);
+            }
+        }
         if(session.Settings.Surfaces.DesktopEnabled&&!desktop.Attached&&DateTime.UtcNow>=retryDesktop){
             if(!NativeShell.IsWindow(desktop.Handle)){desktop=new CompactSurface(session,true);desktop.OpenDevice+=Open;}
             desktop.AttachDesktop();retryDesktop=DateTime.UtcNow.AddSeconds(5);

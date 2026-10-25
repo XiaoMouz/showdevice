@@ -1,5 +1,20 @@
 use crate::*;
 #[test]
+fn background_polling_is_explicit_and_independent_of_foreground() {
+    let mut p: PollPreferences = serde_json::from_str(r#"{"interval_seconds":30}"#).unwrap();
+    assert_eq!(p.scheduled_interval("mouse", false), None);
+    p.background_device_intervals.insert("mouse".into(), 300);
+    assert!(p.valid());
+    assert_eq!(p.scheduled_interval("mouse", false), Some(300));
+    assert_eq!(p.scheduled_interval("mouse", true), Some(30));
+    assert_eq!(p.scheduled_interval("keyboard", false), None);
+    p.excluded_devices.push("mouse".into());
+    assert_eq!(p.scheduled_interval("mouse", false), None);
+    assert_eq!(p.scheduled_interval("mouse", true), None);
+    p.background_device_intervals.insert("mouse".into(), 0);
+    assert!(!p.valid());
+}
+#[test]
 fn new_plugins_match_only_known_models_and_configuration_collections() {
     for (json, vid, pids, page, usage, excluded) in [
         (
