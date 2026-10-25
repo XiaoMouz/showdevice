@@ -44,6 +44,7 @@ public sealed class MainWindow : Window {
         session.Snapshot+=Apply;
         session.Failed+=ShowError;
         Title = "ShowDevice";
+        AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory,"Assets","showdevice-icon.ico"));
         L.Language=settings.Language;
         RestoreWindow();
         compactList=preferences.CompactList;

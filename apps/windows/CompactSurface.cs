@@ -39,6 +39,7 @@ internal sealed class CompactSurface : Window {
     public CompactSurface(AppSession session,bool desktop){
         this.session=session;this.desktop=desktop;
         Title=desktop?"ShowDevice · Desktop":"ShowDevice · Devices";
+        AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory,"Assets","showdevice-icon.ico"));
         Handle=WinRT.Interop.WindowNative.GetWindowHandle(this);
         var presenter=OverlappedPresenter.Create();presenter.SetBorderAndTitleBar(false,false);presenter.IsResizable=false;presenter.IsMaximizable=false;presenter.IsMinimizable=false;AppWindow.SetPresenter(presenter);
         // Opt-in development mode exposes the popup to native UI automation; normal runs stay tool windows.
