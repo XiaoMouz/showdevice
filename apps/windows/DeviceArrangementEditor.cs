@@ -6,15 +6,18 @@ namespace ShowDevice;
 
 internal static class DeviceArrangementEditor {
     public static FrameworkElement Create(AppSettings draft,Action commit){
-        var panel=new StackPanel{Spacing=12};
-        panel.Children.Add(new TextBlock{Text=L.T("Device visibility and order"),FontSize=16,FontWeight=Microsoft.UI.Text.FontWeights.SemiBold});
+        var panel=new StackPanel{Spacing=8};
+        panel.Children.Add(SettingsPage.Heading("Device visibility and order"));
         var scope=new ComboBox{HorizontalAlignment=HorizontalAlignment.Stretch};
         foreach(var label in new[]{"Main window","Tray popup","Desktop card"})scope.Items.Add(L.T(label));
-        scope.SelectedIndex=0;AutomationProperties.SetName(scope,L.T("Device visibility and order"));panel.Children.Add(scope);
-        var all=new ToggleSwitch{Header=L.T("Show all devices"),OnContent="",OffContent="",MinWidth=0};panel.Children.Add(all);
-        var list=new ListView{CanDragItems=true,CanReorderItems=true,AllowDrop=true,SelectionMode=ListViewSelectionMode.Single,HorizontalContentAlignment=HorizontalAlignment.Stretch};
-        AutomationProperties.SetName(list,L.T("Device order"));panel.Children.Add(list);
-        var empty=new TextBlock{Text=L.T("Connect a supported device"),TextWrapping=TextWrapping.Wrap};panel.Children.Add(empty);
+        scope.SelectedIndex=0;
+        panel.Children.Add(SettingsPage.Panel(SettingsPage.Field("Display area",scope,SettingsPage.SettingIcon("\uE7F4"))));
+        var all=new ToggleSwitch{OnContent="",OffContent="",MinWidth=0};
+        var allCard=SettingsPage.Panel(SettingsPage.Field("Show all devices",all,SettingsPage.SettingIcon("\uE8FD")));panel.Children.Add(allCard);
+        var list=new ListView{CanDragItems=true,CanReorderItems=true,AllowDrop=true,SelectionMode=ListViewSelectionMode.Single,HorizontalContentAlignment=HorizontalAlignment.Stretch,Padding=new(0)};
+        AutomationProperties.SetName(list,L.T("Device order"));
+        var rows=new StackPanel();rows.Children.Add(list);panel.Children.Add(SettingsPage.Panel(rows));
+        var empty=new TextBlock{Text=L.T("Connect a supported device"),TextWrapping=TextWrapping.Wrap,Margin=new(36,12,0,12)};rows.Children.Add(empty);
         var checks=new Dictionary<string,CheckBox>();
         var arrows=new Dictionary<string,(Button Up,Button Down)>();bool building=false;
         var prefs=draft.Surfaces;
@@ -47,9 +50,9 @@ internal static class DeviceArrangementEditor {
             AutomationProperties.SetName(button,draft.KnownDevices[id]+" · "+L.T(label));ToolTipService.SetToolTip(button,L.T(label));button.Click+=(_,_)=>Move(id,direction);return button;
         }
         void Build(){
-            building=true;list.Items.Clear();checks.Clear();arrows.Clear();all.Visibility=scope.SelectedIndex==0?Visibility.Collapsed:Visibility.Visible;all.IsOn=All();
+            building=true;list.Items.Clear();checks.Clear();arrows.Clear();allCard.Visibility=scope.SelectedIndex==0?Visibility.Collapsed:Visibility.Visible;all.IsOn=All();
             foreach(var (id,name) in SurfacePolicy.Ordered(draft.KnownDevices,Order(),pair=>pair.Key,pair=>pair.Value)){
-                var row=new Grid{ColumnSpacing=10,MinHeight=44};
+                var row=new Grid{ColumnSpacing=12,MinHeight=48};
                 row.ColumnDefinitions.Add(new(){Width=GridLength.Auto});row.ColumnDefinitions.Add(new(){Width=new GridLength(24)});row.ColumnDefinitions.Add(new());row.ColumnDefinitions.Add(new(){Width=GridLength.Auto});row.ColumnDefinitions.Add(new(){Width=GridLength.Auto});
                 if(scope.SelectedIndex!=0){
                     var check=new CheckBox{IsChecked=All()||Picks().Contains(id),MinWidth=0,MinHeight=32,Padding=new(0),IsEnabled=!draft.ExcludedDevices.Contains(id)};
@@ -66,7 +69,8 @@ internal static class DeviceArrangementEditor {
                 var kind=draft.DeviceKinds.GetValueOrDefault(id,"other");var icon=DeviceVisuals.Icon(kind,20);icon.Foreground=DeviceVisuals.Accent(kind);row.Children.Add(icon);Grid.SetColumn(icon,1);
                 var title=new TextBlock{Text=name,VerticalAlignment=VerticalAlignment.Center,TextWrapping=TextWrapping.Wrap};row.Children.Add(title);Grid.SetColumn(title,2);
                 var up=Arrow(id,"\uE70E","Move up",-1);var down=Arrow(id,"\uE70D","Move down",1);arrows[id]=(up,down);row.Children.Add(up);Grid.SetColumn(up,3);row.Children.Add(down);Grid.SetColumn(down,4);
-                var item=new ListViewItem{Content=row,Tag=id,HorizontalContentAlignment=HorizontalAlignment.Stretch,Padding=new(4,0,4,0)};AutomationProperties.SetName(item,name);list.Items.Add(item);
+                if(scope.SelectedIndex==0){row.ColumnDefinitions.RemoveAt(0);Grid.SetColumn(icon,0);Grid.SetColumn(title,1);Grid.SetColumn(up,2);Grid.SetColumn(down,3);}
+                var item=new ListViewItem{Content=row,Tag=id,HorizontalContentAlignment=HorizontalAlignment.Stretch,Padding=new(0)};AutomationProperties.SetName(item,name);list.Items.Add(item);
             }
             empty.Visibility=list.Items.Count==0?Visibility.Visible:Visibility.Collapsed;UpdateArrows();building=false;
         }

@@ -83,6 +83,7 @@ internal static class L {
         ["Image overlay"]="图片遮罩",
         ["Background transparency"]="背景透明度",
         ["Device visibility and order"]="设备显示与排序",["Device order"]="设备顺序",
+        ["Display area"]="显示位置",
         ["Show all devices"]="显示所有设备",["Move up"]="上移",["Move down"]="下移",["No devices selected"]="未选择设备",
         ["Image must be smaller than 20 MB."]="图片大小需小于 20 MB。",
         ["Unable to apply appearance."]="暂时无法应用外观。",

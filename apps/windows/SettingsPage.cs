@@ -4,10 +4,10 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Media;
 namespace ShowDevice;
 internal static class SettingsPage {
-    private static TextBlock Heading(string title)=>new(){Text=L.T(title),FontSize=16,FontWeight=Microsoft.UI.Text.FontWeights.SemiBold,Margin=new Thickness(0,0,0,4)};
-    private static Border Panel(UIElement child)=>new(){Child=child,Padding=new Thickness(16,8,16,8),CornerRadius=new CornerRadius(8),BorderThickness=new Thickness(1),Background=DeviceVisuals.Resource("CardBackgroundFillColorDefaultBrush"),BorderBrush=DeviceVisuals.Resource("CardStrokeColorDefaultBrush")};
-    private static FontIcon SettingIcon(string glyph)=>new(){Glyph=glyph,FontFamily=new FontFamily("Segoe Fluent Icons"),FontSize=20,Foreground=DeviceVisuals.Resource("TextFillColorSecondaryBrush"),IsHitTestVisible=false};
-    private static Grid Field(string label,FrameworkElement control,FontIcon? icon=null){
+    internal static TextBlock Heading(string title)=>new(){Text=L.T(title),FontSize=16,FontWeight=Microsoft.UI.Text.FontWeights.SemiBold,Margin=new Thickness(0,0,0,4)};
+    internal static Border Panel(UIElement child)=>new(){Child=child,Padding=new Thickness(16,8,16,8),CornerRadius=new CornerRadius(8),BorderThickness=new Thickness(1),Background=DeviceVisuals.Resource("CardBackgroundFillColorDefaultBrush"),BorderBrush=DeviceVisuals.Resource("CardStrokeColorDefaultBrush")};
+    internal static FontIcon SettingIcon(string glyph)=>new(){Glyph=glyph,FontFamily=new FontFamily("Segoe Fluent Icons"),FontSize=20,Foreground=DeviceVisuals.Resource("TextFillColorSecondaryBrush"),IsHitTestVisible=false};
+    internal static Grid Field(string label,FrameworkElement control,FontIcon? icon=null){
         var row=new Grid{ColumnSpacing=24,MinHeight=48,Padding=new Thickness(0,8,0,8)};
         row.ColumnDefinitions.Add(new ColumnDefinition());row.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});
         row.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});row.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
@@ -43,10 +43,11 @@ internal static class SettingsPage {
         }
         content.Children.Add(new TextBlock{Text=L.T("Settings"),FontSize=28,FontWeight=Microsoft.UI.Text.FontWeights.SemiBold});
         var updates=new StackPanel{Spacing=8};updates.Children.Add(Heading("Updates"));
+        var updateCard=new StackPanel{Spacing=0};
         var automatic=new ToggleSwitch{IsOn=draft.AutoUpdate,IsEnabled=UpdateIntegration.InstallRoot!=null,OnContent="",OffContent="",MinWidth=0};
-        updates.Children.Add(Field("Automatic updates",automatic,SettingIcon("\uE895")));
+        updateCard.Children.Add(Field("Automatic updates",automatic,SettingIcon("\uE895")));
         var updateStatus=new TextBlock{Text=UpdateIntegration.VersionLabel+" · "+UpdateIntegration.Status(),TextWrapping=TextWrapping.Wrap,Foreground=DeviceVisuals.Resource("TextFillColorSecondaryBrush"),Margin=new(36,0,0,8)};
-        updates.Children.Add(updateStatus);content.Children.Add(Panel(updates));
+        updateCard.Children.Add(updateStatus);updates.Children.Add(Panel(updateCard));content.Children.Add(updates);
         automatic.Toggled+=(_,_)=>{draft.AutoUpdate=automatic.IsOn;Commit();};
         var updateTimer=new DispatcherTimer{Interval=TimeSpan.FromSeconds(3)};
         updateTimer.Tick+=(_,_)=>updateStatus.Text=UpdateIntegration.VersionLabel+" · "+UpdateIntegration.Status();
@@ -76,7 +77,7 @@ internal static class SettingsPage {
         width.ValueChanged+=(_,_)=>{if(double.IsFinite(width.Value)){draft.Surfaces.Width=width.Value;Commit();}};
         motion.ValueChanged+=(_,_)=>{if(double.IsFinite(motion.Value)){draft.Surfaces.TransitionMs=(int)motion.Value;Commit();}};
         content.Children.Add(surfaces);
-        content.Children.Add(Panel(DeviceArrangementEditor.Create(draft,Commit)));
+        content.Children.Add(DeviceArrangementEditor.Create(draft,Commit));
         var devices=new StackPanel{Spacing=8};
         if(current.KnownDevices.Count>0)devices.Children.Add(Heading("Devices"));
         foreach(var (id,name) in current.KnownDevices.OrderBy(p=>p.Value)){
