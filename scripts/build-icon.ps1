@@ -1,5 +1,28 @@
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
+if (-not ('ShowDeviceIconMask' -as [type])) {
+    Add-Type -ReferencedAssemblies System.Drawing.Common,System.Drawing.Primitives @'
+using System;
+using System.Drawing;
+public static class ShowDeviceIconMask {
+    public static void Apply(Bitmap image) {
+        double radius = image.Width * .25; // Same ratio as MainWindow.RoundTitleIcon.
+        for (int y=0;y<image.Height;y++) for (int x=0;x<image.Width;x++) {
+            if ((x>=radius && x+1<=image.Width-radius) || (y>=radius && y+1<=image.Height-radius)) continue;
+            int covered=0;
+            for(int sy=0;sy<8;sy++) for(int sx=0;sx<8;sx++) {
+                double px=x+(sx+.5)/8,py=y+(sy+.5)/8;
+                double cx=Math.Max(radius,Math.Min(image.Width-radius,px));
+                double cy=Math.Max(radius,Math.Min(image.Height-radius,py));
+                if ((px-cx)*(px-cx)+(py-cy)*(py-cy)<=radius*radius) covered++;
+            }
+            var color=image.GetPixel(x,y);
+            image.SetPixel(x,y,Color.FromArgb((color.A*covered+32)/64,color.R,color.G,color.B));
+        }
+    }
+}
+'@
+}
 $assetDirectory = Join-Path (Split-Path $PSScriptRoot -Parent) 'ui/assets'
 $source = [Drawing.Bitmap]::new((Join-Path $assetDirectory 'showdevice-icon.png'))
 $sizes = @(16, 20, 24, 32, 40, 48, 64, 128, 256)
@@ -13,6 +36,7 @@ try {
             $graphics.InterpolationMode = [Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
             $graphics.PixelOffsetMode = [Drawing.Drawing2D.PixelOffsetMode]::HighQuality
             $graphics.DrawImage($source, 0, 0, $size, $size)
+            [ShowDeviceIconMask]::Apply($bitmap)
             $bitmap.Save($stream, [Drawing.Imaging.ImageFormat]::Png)
             $frames.Add($stream.ToArray())
         } finally { $stream.Dispose(); $graphics.Dispose(); $bitmap.Dispose() }

@@ -23,8 +23,8 @@ internal sealed class ResidentShell : IDisposable {
         popup.OpenDevice+=Open;desktop.OpenDevice+=Open;
         popup.Hidden+=()=>{popupHidden=DateTime.UtcNow;UpdateInterest();};main.Hidden+=()=>UpdateInterest();
         callback=Message;NativeShell.SetWindowSubclass(handle,callback,1,0);NativeShell.WTSRegisterSessionNotification(handle,0);
-        var bytes=File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory,"Assets","showdevice-icon.png"));
-        var nativeIcon=NativeShell.CreateIconFromResourceEx(bytes,(uint)bytes.Length,true,0x30000,32,32,0);iconOwned=nativeIcon!=0;
+        var iconPath=Path.Combine(AppContext.BaseDirectory,"Assets","showdevice-icon.ico");
+        var nativeIcon=NativeShell.LoadImage(0,iconPath,1,32,32,0x10);iconOwned=nativeIcon!=0;
         if(nativeIcon==0)nativeIcon=NativeShell.LoadIcon(0,(nint)32512);
         icon=new(){Size=(uint)Marshal.SizeOf<NativeShell.NotifyData>(),Window=handle,Id=1,Flags=1|2|4|128,Callback=0x8001,Icon=nativeIcon,Tip="ShowDevice",Info="",Title="",Version=4};
         AddIcon();

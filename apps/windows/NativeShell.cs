@@ -42,6 +42,7 @@ internal static class NativeShell {
     [DllImport("user32.dll")] internal static extern nint CreateIconFromResourceEx(byte[] bytes,uint size,bool icon,uint version,int cx,int cy,uint flags);
     [DllImport("user32.dll")] internal static extern bool DestroyIcon(nint icon);
     [DllImport("user32.dll")] internal static extern nint LoadIcon(nint instance,nint name);
+    [DllImport("user32.dll",CharSet=CharSet.Unicode)] internal static extern nint LoadImage(nint instance,string name,uint type,int width,int height,uint flags);
     [DllImport("shell32.dll",CharSet=CharSet.Unicode)] internal static extern bool Shell_NotifyIcon(uint message,ref NotifyData data);
     [DllImport("shell32.dll")] internal static extern int Shell_NotifyIconGetRect(ref IconIdentifier id,out Rect rect);
     [DllImport("comctl32.dll")] internal static extern bool SetWindowSubclass(nint hwnd,SubclassProc callback,nuint id,nuint data);
