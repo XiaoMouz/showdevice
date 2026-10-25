@@ -11,6 +11,50 @@ pub const API_VERSION: &str = "1.0.0";
 pub const WIRE_VERSION: u16 = 1;
 pub const MAX_FRAME: usize = 65_536;
 pub const MAX_APP_FRAME: usize = 2_097_152;
+/// Local host scheduling preferences. Excluded IDs never start a device session.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct PollPreferences {
+    pub interval_seconds: u64,
+    #[serde(default)]
+    pub device_intervals: BTreeMap<String, u64>,
+    #[serde(default)]
+    pub excluded_devices: Vec<String>,
+}
+impl Default for PollPreferences {
+    fn default() -> Self {
+        Self {
+            interval_seconds: 30,
+            device_intervals: BTreeMap::new(),
+            excluded_devices: vec![],
+        }
+    }
+}
+impl PollPreferences {
+    pub fn valid(&self) -> bool {
+        (5..=3600).contains(&self.interval_seconds)
+            && self.device_intervals.len() <= 256
+            && self.excluded_devices.len() <= 256
+            && self
+                .device_intervals
+                .iter()
+                .all(|(id, seconds)| id.len() <= 1024 && (5..=3600).contains(seconds))
+            && self.excluded_devices.iter().all(|id| id.len() <= 1024)
+    }
+    pub fn interval(&self, id: &str) -> u64 {
+        self.device_intervals
+            .get(id)
+            .copied()
+            .unwrap_or(self.interval_seconds)
+    }
+    pub fn excluded(&self, id: &str) -> bool {
+        self.excluded_devices.iter().any(|item| item == id)
+    }
+}
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum AppCommand {
+    Settings { preferences: PollPreferences },
+}
 pub const HOST_CAPABILITIES: &[&str] = &[
     "hid.query.v1",
     "state.snapshot.v1",
@@ -452,6 +496,32 @@ fn write_limited<T: Serialize>(writer: &mut impl Write, value: &T, limit: usize)
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn polling_preferences_validate_and_override() {
+        let mut prefs = PollPreferences::default();
+        assert!(prefs.valid());
+        assert_eq!(prefs.interval("mouse"), 30);
+        prefs.device_intervals.insert("mouse".into(), 5);
+        assert_eq!(prefs.interval("mouse"), 5);
+        assert_eq!(prefs.interval("keyboard"), 30);
+        prefs.excluded_devices.push("mouse".into());
+        assert!(prefs.excluded("mouse"));
+        prefs.device_intervals.insert("mouse".into(), 0);
+        assert!(!prefs.valid());
+        prefs.device_intervals.clear();
+        prefs.interval_seconds = 3601;
+        assert!(!prefs.valid());
+    }
+    #[test]
+    fn local_settings_command_is_additive() {
+        let command: AppCommand = serde_json::from_str(
+            r#"{"type":"settings","preferences":{"interval_seconds":60,"future":true}}"#,
+        )
+        .unwrap();
+        let AppCommand::Settings { preferences } = command;
+        assert!(preferences.valid());
+        assert_eq!(preferences.interval("device"), 60);
+    }
     #[test]
     fn bounded_frames() {
         assert!(

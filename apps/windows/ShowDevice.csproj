@@ -16,5 +16,6 @@
   </PropertyGroup>
   <ItemGroup><PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260921001" /></ItemGroup>
   <ItemGroup><Compile Include="../../ui/native/windows/PluginPage.cs" Link="PluginPage.cs" /></ItemGroup>
+  <ItemGroup><Content Include="../../ui/assets/showdevice-icon.png" Link="Assets/showdevice-icon.png" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
 </Project>
 

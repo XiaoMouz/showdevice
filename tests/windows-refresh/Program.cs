@@ -25,3 +25,31 @@ Expect(!ViewChanges.Header(original,Changed(n=>n["product_image"]="C:/local/new.
 Expect(!ViewChanges.Header(original,Changed(n=>n["device"]!["id"]="mouse:2")),"device selection invalidates header");
 Expect(!ViewChanges.Body(original,Changed(n=>n["pages"]!.AsArray().Add(new JsonObject()))),"page change invalidates readings");
 Expect(!ViewChanges.Body(original,Changed(n=>n["state"]!.AsObject().Remove("dpi"))),"removed capability state invalidates readings");
+var preferenceFile=Path.Combine(Path.GetTempPath(),"showdevice-prefs-"+Guid.NewGuid()+".json");
+try{
+    var prefs=new WindowPreferences{CompactList=true,Maximized=true,X=-1800,Y=100,Width=1000,Height=700};
+    prefs.Save(preferenceFile);
+    Expect(WindowPreferences.Load(preferenceFile)==prefs,"window and pane state survive disk roundtrip");
+    var fitted=prefs.Fit(0,0,1280,720);
+    Expect(fitted.X==0&&fitted.Y==20&&fitted.Width==1000,"disconnected monitor placement returns to work area");
+    var small=(prefs with{Width=int.MaxValue,Height=-1}).Fit(-800,0,800,600);
+    Expect(small.Width==800&&small.Height==420&&small.X==-800,"invalid dimensions clamp on negative-coordinate monitor");
+    File.WriteAllText(preferenceFile,"{broken");
+    Expect(WindowPreferences.Load(preferenceFile)==new WindowPreferences(),"corrupt preferences fall back safely");
+    var app=new AppSettings{Language="en",IntervalSeconds=60,DeviceIntervals=new(){{"mouse",5}},ExcludedDevices=new(){"keyboard"},KnownDevices=new(){{"keyboard","Keyboard"}}};
+    app.Save(preferenceFile);
+    var saved=AppSettings.Load(preferenceFile);
+    Expect(saved.Language=="en"&&saved.IntervalSeconds==60&&saved.DeviceIntervals["mouse"]==5&&saved.ExcludedDevices.Contains("keyboard")&&saved.KnownDevices.ContainsKey("keyboard"),"language, intervals and excluded-device recovery survive restart");
+    File.WriteAllText(preferenceFile,"{\"IntervalSeconds\":-1,\"Language\":\"invalid\",\"DeviceIntervals\":null,\"ExcludedDevices\":null,\"KnownDevices\":null}");
+    saved=AppSettings.Load(preferenceFile);
+    Expect(saved.IntervalSeconds==5&&saved.Language=="zh"&&saved.DeviceIntervals.Count==0,"invalid settings normalize without crashing");
+    L.Language="zh";Expect(L.T("Settings")=="设置","Chinese resources resolve");
+    L.Language="en";Expect(L.T("Settings")=="Settings","English resources resolve");
+    const string sleeping="No valid Razer replies; device may be asleep or interface unavailable. Waiting for device; retrying automatically.";
+    L.Language="zh";
+    Expect(ReadingNotice.MayBeSleeping(sleeping)&&ReadingNotice.Brief(sleeping)=="设备未响应，可能处于休眠。","sleep hint is concise and localized without claiming confirmed sleep");
+    Expect(!ReadingNotice.MayBeSleeping("plugin timeout or closed pipe")&&!ReadingNotice.MayBeSleeping("invalid response checksum; retrying automatically"),"plugin and protocol failures are not mislabeled as sleep");
+    Expect(ReadingNotice.UncertainBattery("stale")&&ReadingNotice.UncertainBattery("unknown")&&!ReadingNotice.UncertainBattery("available")&&!ReadingNotice.UncertainBattery("offline")&&!ReadingNotice.UncertainBattery("unsupported"),"question mark tracks uncertain readings and clears on recovery");
+    Expect(!ReadingNotice.Brief("unknown internal error").Contains("internal"),"unknown diagnostics use a localized fallback");
+    L.Language="en";Expect(ReadingNotice.Brief(sleeping)=="No response. Device may be asleep.","English notices remain available");
+}finally{File.Delete(preferenceFile);if(File.Exists(preferenceFile+".tmp"))File.Delete(preferenceFile+".tmp");}

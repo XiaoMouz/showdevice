@@ -158,6 +158,8 @@ fn schemas(out: &Path) -> Result<()> {
     std::fs::create_dir_all(out)?;
     for (name, schema) in [
         ("app-snapshot", schemars::schema_for!(AppSnapshot)),
+        ("app-command", schemars::schema_for!(AppCommand)),
+        ("poll-preferences", schemars::schema_for!(PollPreferences)),
         ("descriptor", schemars::schema_for!(Descriptor)),
         ("host-message", schemars::schema_for!(HostMessage)),
         ("plugin-message", schemars::schema_for!(PluginMessage)),

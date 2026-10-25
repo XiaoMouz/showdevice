@@ -11,10 +11,12 @@ enum Event {
         view: Box<DeviceView>,
     },
     Refresh,
+    Settings(PollPreferences),
     Stop,
 }
 enum Control {
     Refresh,
+    Reschedule,
     Stop,
 }
 struct Actor {
@@ -76,6 +78,7 @@ fn worker(
     events: SyncSender<Event>,
     control: Receiver<Control>,
     demo: bool,
+    preferences: std::sync::Arc<std::sync::RwLock<PollPreferences>>,
 ) {
     let mut view = DeviceView {
         product_image: package.product_image(),
@@ -111,6 +114,9 @@ fn worker(
     };
     let mut broker = None;
     loop {
+        if preferences.read().unwrap().excluded(&device.id) {
+            return;
+        }
         let result = with_broker(
             &mut broker,
             || {
@@ -142,7 +148,6 @@ fn worker(
         if broker.as_ref().is_some_and(|b| !b.is_healthy()) {
             session.stop();
         }
-        let retrying = result.is_err();
         match result {
             Ok(state) => {
                 sd_device_features_mark_stale(&mut view.state);
@@ -170,13 +175,25 @@ fn worker(
         if !session.active {
             return;
         }
-        match control.recv_timeout(Duration::from_secs(if retrying { 3 } else { 30 })) {
-            Ok(Control::Stop) | Err(mpsc::RecvTimeoutError::Disconnected) => return,
-            _ => {}
+        let last = Instant::now();
+        loop {
+            let seconds = preferences.read().unwrap().interval(&device.id);
+            let remaining = Duration::from_secs(seconds).saturating_sub(last.elapsed());
+            match control.recv_timeout(remaining) {
+                Ok(Control::Stop) | Err(mpsc::RecvTimeoutError::Disconnected) => return,
+                Ok(Control::Reschedule) => continue,
+                _ => break,
+            }
         }
     }
 }
 pub fn run(root: &Path, demo: bool) -> Result<()> {
+    let initial = std::env::var("SHOWDEVICE_POLL_PREFERENCES")
+        .ok()
+        .and_then(|s| serde_json::from_str::<PollPreferences>(&s).ok())
+        .filter(PollPreferences::valid)
+        .unwrap_or_default();
+    let preferences = std::sync::Arc::new(std::sync::RwLock::new(initial));
     let (packages, mut diagnostics) = sd_runtime::discover(root);
     if demo {
         diagnostics.push("SIMULATION — no hardware is queried".into());
@@ -190,7 +207,11 @@ pub fn run(root: &Path, demo: bool) -> Result<()> {
         use std::io::BufRead;
         loop {
             let mut line = String::new();
-            match reader.by_ref().take(128).read_line(&mut line) {
+            match reader
+                .by_ref()
+                .take(MAX_FRAME as u64 + 1)
+                .read_line(&mut line)
+            {
                 Ok(0) | Err(_) => {
                     let _ = commands.send(Event::Stop);
                     return;
@@ -198,7 +219,17 @@ pub fn run(root: &Path, demo: bool) -> Result<()> {
                 Ok(_) if line.trim() == "refresh" => {
                     let _ = commands.try_send(Event::Refresh);
                 }
-                _ => {}
+                Ok(_) => {
+                    if line.len() > MAX_FRAME || !line.ends_with('\n') {
+                        let _ = commands.send(Event::Stop);
+                        return;
+                    }
+                    if let Ok(AppCommand::Settings { preferences }) = serde_json::from_str(&line) {
+                        if preferences.valid() {
+                            let _ = commands.send(Event::Settings(preferences));
+                        }
+                    }
+                }
             }
         }
     });
@@ -223,6 +254,10 @@ pub fn run(root: &Path, demo: bool) -> Result<()> {
                 }
             };
             if let Some(devices) = devices {
+                let devices: Vec<_> = devices
+                    .into_iter()
+                    .filter(|d| !preferences.read().unwrap().excluded(&d.id))
+                    .collect();
                 let current: BTreeSet<_> = devices.iter().map(|d| d.id.clone()).collect();
                 dirty |= remove_disconnected(&mut actors, &mut views, &current);
                 for device in devices {
@@ -249,8 +284,10 @@ pub fn run(root: &Path, demo: bool) -> Result<()> {
                     let id = device.id.clone();
                     let (control, jobs) = mpsc::sync_channel(1);
                     let events = tx.clone();
-                    let thread =
-                        std::thread::spawn(move || worker(package, device, g, events, jobs, demo));
+                    let prefs = preferences.clone();
+                    let thread = std::thread::spawn(move || {
+                        worker(package, device, g, events, jobs, demo, prefs)
+                    });
                     actors.insert(
                         id,
                         Actor {
@@ -275,6 +312,19 @@ pub fn run(root: &Path, demo: bool) -> Result<()> {
             dirty = false;
         }
         match rx.recv_timeout(scan_at.saturating_duration_since(Instant::now())) {
+            Ok(Event::Settings(next)) => {
+                *preferences.write().unwrap() = next;
+                let current = actors
+                    .keys()
+                    .filter(|id| !preferences.read().unwrap().excluded(id))
+                    .cloned()
+                    .collect();
+                dirty |= remove_disconnected(&mut actors, &mut views, &current);
+                for actor in actors.values() {
+                    let _ = actor.control.try_send(Control::Reschedule);
+                }
+                scan_at = Instant::now();
+            }
             Ok(Event::Update { generation, view }) => {
                 dirty |= apply_update(&actors, &mut views, generation, *view);
             }

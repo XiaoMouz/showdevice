@@ -6,4 +6,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup><Compile Include="../../apps/windows/ViewChanges.cs" Link="ViewChanges.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../../apps/windows/WindowPreferences.cs" Link="WindowPreferences.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../../apps/windows/AppSettings.cs" Link="AppSettings.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../../apps/windows/ReadingNotice.cs" Link="ReadingNotice.cs" /></ItemGroup>
 </Project>

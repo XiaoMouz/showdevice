@@ -1,4 +1,5 @@
 <Application x:Class="ShowDevice.App" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-<Application.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries><XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls"/></ResourceDictionary.MergedDictionaries></ResourceDictionary></Application.Resources>
+<Application.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries><XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls"/></ResourceDictionary.MergedDictionaries><FontFamily x:Key="ContentControlThemeFontFamily">Microsoft YaHei UI</FontFamily><Style TargetType="TextBlock"><Setter Property="FontFamily" Value="Microsoft YaHei UI"/></Style></ResourceDictionary></Application.Resources>
 </Application>
+
 

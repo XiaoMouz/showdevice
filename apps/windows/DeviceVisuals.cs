@@ -11,7 +11,7 @@ internal static class DeviceVisuals {
     private const double ArtworkScale=.7;
     public static Brush Resource(string key) => (Brush)Application.Current.Resources[key];
     public static string Kind(JsonElement device) => device.TryGetProperty("device_kind",out var k)?k.GetString()??"other":"other";
-    public static string TypeName(JsonElement device) => Kind(device) switch {"keyboard"=>"Keyboard","mouse"=>"Mouse","headset"=>"Headset",_=>"Device"};
+    public static string TypeName(JsonElement device) => L.T(Kind(device) switch {"keyboard"=>"Keyboard","mouse"=>"Mouse","headset"=>"Headset",_=>"Device"});
     public static string Glyph(string kind) => kind switch {"keyboard"=>"\uE765","mouse"=>"\uE962","headset"=>"\uE7F6","power"=>"\uE83E","connection"=>"\uE839","lighting"=>"\uE781","settings"=>"\uE713",_=>"\uE772"};
     public static FontIcon Icon(string kind,double size=22) => new(){Glyph=Glyph(kind),FontFamily=new FontFamily("Segoe Fluent Icons"),FontSize=size,IsHitTestVisible=false};
     public static Brush Accent(string kind) {
@@ -26,6 +26,7 @@ internal static class DeviceVisuals {
         bool numeric=r.TryGetProperty("value",out var v)&&v.ValueKind==JsonValueKind.Number&&v.TryGetDouble(out double _);
         double percent=numeric?Math.Clamp(v.GetDouble(),0,100):0;
         bool fresh=availability=="available";
+        bool uncertain=ReadingNotice.UncertainBattery(availability);
         var brush=Resource("TextFillColorSecondaryBrush");
         if(fresh&&!new Windows.UI.ViewManagement.AccessibilitySettings().HighContrast)
             brush=new SolidColorBrush(percent<=20?Color.FromArgb(255,196,56,56):percent<=40?Color.FromArgb(255,169,111,0):Color.FromArgb(255,26,143,98));
@@ -33,13 +34,16 @@ internal static class DeviceVisuals {
         var battery=new Grid{Width=width,Height=height,VerticalAlignment=VerticalAlignment.Center};
         battery.Children.Add(new Border{Width=width-terminal-1,Height=height,BorderThickness=new Thickness(compact?1:1.5),BorderBrush=brush,CornerRadius=new CornerRadius(compact?2:3),HorizontalAlignment=HorizontalAlignment.Left});
         battery.Children.Add(new Border{Width=terminal,Height=compact?5:7,Background=brush,HorizontalAlignment=HorizontalAlignment.Right,VerticalAlignment=VerticalAlignment.Center,CornerRadius=new CornerRadius(1)});
-        if(numeric&&availability!="offline")battery.Children.Add(new Border{Width=(width-terminal-1-inset*2)*percent/100,Height=height-inset*2,Background=brush,HorizontalAlignment=HorizontalAlignment.Left,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(inset,0,0,0),CornerRadius=new CornerRadius(1)});
+        if(numeric&&availability!="offline"&&!uncertain)battery.Children.Add(new Border{Width=(width-terminal-1-inset*2)*percent/100,Height=height-inset*2,Background=brush,HorizontalAlignment=HorizontalAlignment.Left,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(inset,0,0,0),CornerRadius=new CornerRadius(1)});
+        if(uncertain)battery.Children.Add(new TextBlock{Text="?",FontFamily=new FontFamily("Segoe UI"),FontSize=compact?10:14,FontWeight=Microsoft.UI.Text.FontWeights.Bold,Foreground=brush,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,compact?-2:-1,terminal+1,0)});
         row.Children.Add(battery);
-        string text=availability=="offline"?"Offline":!numeric?"Waiting…":$"{percent:0}%"+(availability=="stale"?" · Last known":"");
+        string text=availability=="offline"?L.T("Offline"):!numeric?"—":$"{percent:0}%";
         row.Children.Add(new TextBlock{Text=text,FontSize=compact?14:24,FontWeight=Microsoft.UI.Text.FontWeights.SemiBold,VerticalAlignment=VerticalAlignment.Center});
         if(!compact && state.TryGetProperty("battery.charging",out var charging)&&charging.GetProperty("availability").GetString()=="available"&&charging.GetProperty("value").ValueKind==JsonValueKind.True)
-            row.Children.Add(new TextBlock{Text="Charging",Foreground=brush,VerticalAlignment=VerticalAlignment.Center});
-        AutomationProperties.SetName(row,"Battery: "+text);
+            row.Children.Add(new TextBlock{Text=L.T("Charging"),Foreground=brush,VerticalAlignment=VerticalAlignment.Center});
+        string hint=uncertain?ReadingNotice.BatteryHint(availability):L.T("Battery")+": "+text;
+        ToolTipService.SetToolTip(row,hint);
+        AutomationProperties.SetName(row,L.T("Battery")+": "+text+(uncertain?". "+hint:""));
         return row;
     }
     public static FrameworkElement ListRow(JsonElement device) {
@@ -55,6 +59,15 @@ internal static class DeviceVisuals {
         var battery=Battery(device.GetProperty("state"),true);
         if(battery!=null){Grid.SetColumn(battery,1);battery.HorizontalAlignment=HorizontalAlignment.Right;line.Children.Add(battery);}
         labels.Children.Add(line);return grid;
+    }
+    public static void SetListRowCompact(FrameworkElement row,bool compact){
+        if(row is not Grid grid)return;
+        ((FontIcon)grid.Children[0]).FontSize=compact?18:26;
+        grid.Padding=compact?new Thickness(0,12,0,12):new Thickness(6,12,6,12);
+        grid.ColumnSpacing=compact?0:14;
+        grid.ColumnDefinitions[0].Width=compact?new GridLength(1,GridUnitType.Star):GridLength.Auto;
+        grid.ColumnDefinitions[1].Width=compact?new GridLength(0):new GridLength(1,GridUnitType.Star);
+        ((FrameworkElement)grid.Children[1]).Visibility=compact?Visibility.Collapsed:Visibility.Visible;
     }
     public static FrameworkElement Header(JsonElement device,TextBlock updated) {
         var grid=new Grid{Height=HeaderHeight};
@@ -126,13 +139,11 @@ internal static class DeviceVisuals {
         bool offline=readings.Any(r=>r.GetProperty("availability").GetString()=="offline");
         bool stale=readings.Any(r=>r.GetProperty("availability").GetString()=="stale");
         label.Foreground=Resource("TextFillColorSecondaryBrush");label.FontSize=12;
-        if(times.Length==0){label.Text=offline?"Offline":"Waiting for a reading";return;}
+        if(times.Length==0){label.Text=offline?L.T("Offline"):L.T("Waiting for a reading");return;}
         var time=DateTimeOffset.FromUnixTimeMilliseconds(times.Min()).ToLocalTime();
         var age=DateTimeOffset.Now-time;
-        string ago=age.TotalSeconds<5?"just now":age.TotalSeconds<60?$"{(int)age.TotalSeconds}s ago":age.TotalMinutes<60?$"{(int)age.TotalMinutes}m ago":time.ToString("MMM d, HH:mm");
-        label.Text=(offline?"Offline · Last updated ":stale?"Stale · Last updated ":"Updated ")+ago;
+        string ago=age.TotalSeconds<5?L.T("just now"):age.TotalSeconds<60?(L.Language=="zh"?$"{(int)age.TotalSeconds} 秒前":$"{(int)age.TotalSeconds}s ago"):age.TotalMinutes<60?(L.Language=="zh"?$"{(int)age.TotalMinutes} 分钟前":$"{(int)age.TotalMinutes}m ago"):time.ToString("MMM d, HH:mm");
+        label.Text=(offline?L.T("Offline · Last updated "):stale?L.T("Stale · Last updated "):L.T("Updated "))+ago;
         ToolTipService.SetToolTip(label,time.ToString("yyyy-MM-dd HH:mm:ss zzz"));
     }
 }
-
-
