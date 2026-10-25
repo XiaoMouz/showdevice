@@ -16,6 +16,18 @@ Expect(ViewChanges.Header(original,timestamp)&&ViewChanges.ListRow(original,time
 var dpi=Changed(n=>n["state"]!["dpi"]!["value"]=1600);
 Expect(ViewChanges.Header(original,dpi)&&ViewChanges.ListRow(original,dpi)&&!ViewChanges.Body(original,dpi),"DPI change updates readings without touching list or artwork");
 var battery=Changed(n=>n["state"]!["battery.percent"]!["value"]=69);
+var charging=Changed(n=>n["state"]!["battery.charging"]=new JsonObject{["availability"]="available",["value"]=true,["updated_at_ms"]=1000});
+Expect(!ViewChanges.ListRow(original,charging)&&!ViewChanges.Body(original,charging)&&ViewChanges.Header(original,charging),"charging-only update refreshes icons without reloading artwork");
+Expect(ReadingNotice.IsCharging(charging.GetProperty("state")),"fresh charging true shows charging icon");
+foreach(var availability in new[]{"available","stale","unknown","unsupported","offline"}){
+    var node=JsonNode.Parse(charging.GetRawText())!;
+    node["state"]!["battery.charging"]!["availability"]=availability;
+    if(availability=="available")node["state"]!["battery.charging"]!["value"]=false;
+    var stopped=JsonSerializer.SerializeToElement(node);
+    Expect(!ReadingNotice.IsCharging(stopped.GetProperty("state"))&&!ViewChanges.ListRow(charging,stopped),"charging "+availability+" transition removes bolt and refreshes list");
+}
+var chargeTime=JsonNode.Parse(charging.GetRawText())!;chargeTime["state"]!["battery.charging"]!["updated_at_ms"]=2000;
+Expect(ViewChanges.ListRow(charging,JsonSerializer.SerializeToElement(chargeTime)),"charging timestamp-only update preserves list");
 Expect(ViewChanges.Header(original,battery)&&!ViewChanges.ListRow(original,battery)&&!ViewChanges.Body(original,battery),"battery change remains visible without reloading artwork");
 foreach(var availability in new[]{"stale","offline","unsupported","unknown"}){
     var state=Changed(n=>n["state"]!["battery.percent"]!["availability"]=availability);
@@ -49,7 +61,12 @@ try{
     L.Language="zh";
     Expect(ReadingNotice.MayBeSleeping(sleeping)&&ReadingNotice.Brief(sleeping)=="设备未响应，可能处于休眠。","sleep hint is concise and localized without claiming confirmed sleep");
     Expect(!ReadingNotice.MayBeSleeping("plugin timeout or closed pipe")&&!ReadingNotice.MayBeSleeping("invalid response checksum; retrying automatically"),"plugin and protocol failures are not mislabeled as sleep");
-    Expect(ReadingNotice.UncertainBattery("stale")&&ReadingNotice.UncertainBattery("unknown")&&!ReadingNotice.UncertainBattery("available")&&!ReadingNotice.UncertainBattery("offline")&&!ReadingNotice.UncertainBattery("unsupported"),"question mark tracks uncertain readings and clears on recovery");
+    Expect(!ReadingNotice.UncertainBattery("stale")&&ReadingNotice.UncertainBattery("unknown")&&!ReadingNotice.UncertainBattery("available")&&!ReadingNotice.UncertainBattery("offline")&&!ReadingNotice.UncertainBattery("unsupported"),"question mark is reserved for missing readings");
     Expect(!ReadingNotice.Brief("unknown internal error").Contains("internal"),"unknown diagnostics use a localized fallback");
     L.Language="en";Expect(ReadingNotice.Brief(sleeping)=="No response. Device may be asleep.","English notices remain available");
 }finally{File.Delete(preferenceFile);if(File.Exists(preferenceFile+".tmp"))File.Delete(preferenceFile+".tmp");}
+
+var parseError=Changed(n=>n["error"]="Razer response checksum mismatch");
+Expect(ReadingNotice.IsParseFailure(ReadingNotice.Error(parseError))&&!ReadingNotice.IsParseFailure("request timed out")&&!ReadingNotice.IsParseFailure("invalid plugin manifest"),"parse failures are distinct from sleep and plugin failures");
+Expect(!ViewChanges.ListRow(original,parseError)&&!ViewChanges.Body(original,parseError)&&ViewChanges.Header(original,parseError),"parse error alone updates icons without reloading artwork");
+Expect(!ViewChanges.ListRow(parseError,original)&&!ViewChanges.Body(parseError,original),"recovery clears warning icons without a value change");

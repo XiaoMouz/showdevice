@@ -4,70 +4,80 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Media;
 namespace ShowDevice;
 internal static class SettingsPage {
-    private static TextBlock Heading(string title)=>new(){Text=L.T(title),FontSize=16,FontWeight=Microsoft.UI.Text.FontWeights.SemiBold,Margin=new Thickness(0,8,0,0)};
-    private static Grid Field(string label,FrameworkElement control){
-        var row=new Grid{ColumnSpacing=24,RowSpacing=8,Padding=new Thickness(0,10,0,10)};
+    private static TextBlock Heading(string title)=>new(){Text=L.T(title),FontSize=16,FontWeight=Microsoft.UI.Text.FontWeights.SemiBold,Margin=new Thickness(0,0,0,4)};
+    private static Border Panel(UIElement child)=>new(){Child=child,Padding=new Thickness(16,8,16,8),CornerRadius=new CornerRadius(8),BorderThickness=new Thickness(1),Background=DeviceVisuals.Resource("CardBackgroundFillColorDefaultBrush"),BorderBrush=DeviceVisuals.Resource("CardStrokeColorDefaultBrush")};
+    private static FontIcon SettingIcon(string glyph)=>new(){Glyph=glyph,FontFamily=new FontFamily("Segoe Fluent Icons"),FontSize=20,Foreground=DeviceVisuals.Resource("TextFillColorSecondaryBrush"),IsHitTestVisible=false};
+    private static Grid Field(string label,FrameworkElement control,FontIcon? icon=null){
+        var row=new Grid{ColumnSpacing=24,MinHeight=48,Padding=new Thickness(0,8,0,8)};
         row.ColumnDefinitions.Add(new ColumnDefinition());row.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});
         row.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});row.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
         var text=new TextBlock{Text=L.T(label),VerticalAlignment=VerticalAlignment.Center,TextWrapping=TextWrapping.Wrap};
-        row.Children.Add(text);row.Children.Add(control);AutomationProperties.SetName(control,L.T(label));
+        var caption=new Grid{ColumnSpacing=12,VerticalAlignment=VerticalAlignment.Center};
+        caption.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(24)});caption.ColumnDefinitions.Add(new ColumnDefinition());
+        if(icon!=null){icon.HorizontalAlignment=HorizontalAlignment.Center;icon.VerticalAlignment=VerticalAlignment.Center;caption.Children.Add(icon);AutomationProperties.SetAccessibilityView(icon,Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);}
+        caption.Children.Add(text);Grid.SetColumn(text,1);
+        row.Children.Add(caption);row.Children.Add(control);AutomationProperties.SetName(control,L.T(label));
+        control.VerticalAlignment=VerticalAlignment.Center;
         row.SizeChanged+=(_,args)=>{
             bool narrow=args.NewSize.Width<420;
+            row.RowSpacing=narrow?8:0;
             Grid.SetRow(control,narrow?1:0);Grid.SetColumn(control,narrow?0:1);Grid.SetColumnSpan(control,narrow?2:1);
-            Grid.SetColumnSpan(text,narrow?2:1);control.Width=narrow?double.NaN:200;control.HorizontalAlignment=HorizontalAlignment.Stretch;
+            Grid.SetColumnSpan(caption,narrow?2:1);
+            control.Width=control is ToggleSwitch||narrow?double.NaN:200;
+            control.HorizontalAlignment=control is ToggleSwitch?HorizontalAlignment.Right:HorizontalAlignment.Stretch;
         };
         return row;
     }
-    public static FrameworkElement Create(AppSettings current,Func<AppSettings,Task> apply,Action reset){
+    public static FrameworkElement Create(AppSettings current,Func<AppSettings,Task> apply){
         var draft=System.Text.Json.JsonSerializer.Deserialize<AppSettings>(System.Text.Json.JsonSerializer.Serialize(current))!;
-        var content=new StackPanel{Spacing=20,MaxWidth=800,HorizontalAlignment=HorizontalAlignment.Stretch,Margin=new Thickness(12,16,24,24)};
+        var content=new StackPanel{Spacing=24,MaxWidth=800,HorizontalAlignment=HorizontalAlignment.Stretch,Margin=new Thickness(12,16,12,24)};
+        var error=new InfoBar{IsClosable=true,Severity=InfoBarSeverity.Error};
+        Task pending=Task.CompletedTask;
+        async void Commit(){
+            var next=System.Text.Json.JsonSerializer.Deserialize<AppSettings>(System.Text.Json.JsonSerializer.Serialize(draft))!;
+            var previous=pending;
+            var done=new TaskCompletionSource();pending=done.Task;
+            try{await previous;await apply(next);error.IsOpen=false;}
+            catch(Exception e){error.Message=ReadingNotice.Brief(e.Message);ToolTipService.SetToolTip(error,e.Message);error.IsOpen=true;}
+            finally{done.SetResult();}
+        }
         content.Children.Add(new TextBlock{Text=L.T("Settings"),FontSize=28,FontWeight=Microsoft.UI.Text.FontWeights.SemiBold});
-        var general=new StackPanel{Spacing=2};general.Children.Add(Heading("General"));
+        var general=new StackPanel{Spacing=8};general.Children.Add(Heading("General"));
         var language=new ComboBox{HorizontalAlignment=HorizontalAlignment.Stretch};
         language.Items.Add("简体中文");language.Items.Add("English");language.SelectedIndex=current.Language=="en"?1:0;
-        general.Children.Add(Field("Language",language));
+        general.Children.Add(Panel(Field("Language",language,SettingIcon("\uE774"))));
         var interval=new NumberBox{Minimum=5,Maximum=3600,Value=current.IntervalSeconds,SpinButtonPlacementMode=NumberBoxSpinButtonPlacementMode.Compact};
-        general.Children.Add(Field("Global refresh interval (seconds)",interval));content.Children.Add(general);
-        var entries=new List<(string Id,CheckBox Global,NumberBox Seconds,CheckBox Exclude)>();
-        var deviceSection=new StackPanel{Spacing=0};
-        if(current.KnownDevices.Count>0)deviceSection.Children.Add(Heading("Per-device settings"));
+        general.Children.Add(Panel(Field("Global refresh interval (seconds)",interval,SettingIcon("\uE72C"))));content.Children.Add(general);
+        language.SelectionChanged+=(_,_)=>{draft.Language=language.SelectedIndex==1?"en":"zh";Commit();};
+        interval.ValueChanged+=(_,_)=>{if(!double.IsFinite(interval.Value))return;draft.IntervalSeconds=(int)Math.Clamp(interval.Value,5,3600);Commit();};
+        var devices=new StackPanel{Spacing=8};
+        if(current.KnownDevices.Count>0)devices.Children.Add(Heading("Devices"));
         foreach(var (id,name) in current.KnownDevices.OrderBy(p=>p.Value)){
-            var section=new StackPanel{Spacing=10,Padding=new Thickness(0,16,0,16)};
-            section.Children.Add(new TextBlock{Text=name,FontWeight=Microsoft.UI.Text.FontWeights.SemiBold,TextWrapping=TextWrapping.Wrap});
-            var global=new CheckBox{Content=L.T("Use global interval"),IsChecked=!current.DeviceIntervals.ContainsKey(id)};
+            var section=new StackPanel{Spacing=0};
+            var visible=new ToggleSwitch{MinWidth=0,IsOn=!current.ExcludedDevices.Contains(id),OnContent=L.T("Visible"),OffContent=L.T("Excluded")};
+            var kind=current.DeviceKinds.GetValueOrDefault(id,"other");
+            var deviceIcon=DeviceVisuals.Icon(kind,24);deviceIcon.Foreground=DeviceVisuals.Accent(kind);
+            section.Children.Add(Field(name,visible,deviceIcon));AutomationProperties.SetName(visible,name+" "+L.T("Show device"));
+            var mode=new ComboBox();mode.Items.Add(L.T("Follow global"));mode.Items.Add(L.T("Custom"));mode.SelectedIndex=current.DeviceIntervals.ContainsKey(id)?1:0;
+            section.Children.Add(Field("Refresh interval",mode));AutomationProperties.SetName(mode,name+" "+L.T("Refresh interval"));
             var seconds=new NumberBox{Minimum=5,Maximum=3600,Value=current.DeviceIntervals.GetValueOrDefault(id,current.IntervalSeconds),SpinButtonPlacementMode=NumberBoxSpinButtonPlacementMode.Compact};
-            var excluded=new CheckBox{Content=L.T("Exclude device"),IsChecked=current.ExcludedDevices.Contains(id)};
-            var options=new Grid{ColumnSpacing=16,RowSpacing=4};options.ColumnDefinitions.Add(new ColumnDefinition());options.ColumnDefinitions.Add(new ColumnDefinition());
-            options.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});options.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
-            options.Children.Add(global);options.Children.Add(excluded);Grid.SetColumn(excluded,1);
-            options.SizeChanged+=(_,args)=>{bool narrow=args.NewSize.Width<420;Grid.SetRow(excluded,narrow?1:0);Grid.SetColumn(excluded,narrow?0:1);Grid.SetColumnSpan(global,narrow?2:1);Grid.SetColumnSpan(excluded,narrow?2:1);};
-            var customInterval=Field("Refresh interval (seconds)",seconds);
-            void Enable(){global.IsEnabled=excluded.IsChecked!=true;seconds.IsEnabled=excluded.IsChecked!=true;customInterval.Visibility=global.IsChecked==true?Visibility.Collapsed:Visibility.Visible;}
-            global.Checked+=(_,_)=>Enable();global.Unchecked+=(_,_)=>Enable();excluded.Checked+=(_,_)=>Enable();excluded.Unchecked+=(_,_)=>Enable();Enable();
-            AutomationProperties.SetName(seconds,name+" "+L.T("Refresh interval (seconds)"));
-            AutomationProperties.SetName(global,name+" "+L.T("Use global interval"));AutomationProperties.SetName(excluded,name+" "+L.T("Exclude device"));
-            section.Children.Add(options);section.Children.Add(customInterval);
-            deviceSection.Children.Add(new Border{Child=section,BorderThickness=new Thickness(0,0,0,1),BorderBrush=DeviceVisuals.Resource("DividerStrokeColorDefaultBrush")});
-            entries.Add((id,global,seconds,excluded));
+            var custom=Field("Interval (seconds)",seconds);section.Children.Add(custom);AutomationProperties.SetName(seconds,name+" "+L.T("Interval (seconds)"));
+            void Update(){mode.IsEnabled=visible.IsOn;seconds.IsEnabled=visible.IsOn;custom.Visibility=mode.SelectedIndex==1?Visibility.Visible:Visibility.Collapsed;}
+            Update();
+            visible.Toggled+=(_,_)=>{if(visible.IsOn)draft.ExcludedDevices.Remove(id);else draft.ExcludedDevices.Add(id);Update();Commit();};
+            mode.SelectionChanged+=(_,_)=>{
+                if(mode.SelectedIndex==0)draft.DeviceIntervals.Remove(id);
+                else{if(!double.IsFinite(seconds.Value))seconds.Value=draft.IntervalSeconds;draft.DeviceIntervals[id]=(int)seconds.Value;}
+                Update();Commit();
+            };
+            seconds.ValueChanged+=(_,_)=>{if(mode.SelectedIndex!=1||!double.IsFinite(seconds.Value))return;draft.DeviceIntervals[id]=(int)Math.Clamp(seconds.Value,5,3600);Commit();};
+            // Reserved insertion point for core-validated DeviceSettingsExtension pages.
+            // Plugins never contribute native controls or execute UI code here.
+            section.Children.Add(new StackPanel{Tag=new DeviceSettingsSlot(id),Spacing=8});
+            devices.Children.Add(Panel(section));
         }
-        content.Children.Add(deviceSection);
-        var error=new InfoBar{IsClosable=true,Severity=InfoBarSeverity.Error};content.Children.Add(error);
-        var actions=new StackPanel{Orientation=Orientation.Horizontal,Spacing=12,HorizontalAlignment=HorizontalAlignment.Right};
-        var save=new Button{Content=L.T("Save"),MinWidth=88,Style=(Style)Application.Current.Resources["AccentButtonStyle"]};
-        var cancel=new Button{Content=L.T("Cancel"),MinWidth=88};
-        actions.Children.Add(cancel);actions.Children.Add(save);content.Children.Add(actions);
-        cancel.Click+=(_,_)=>reset();
-        save.Click+=async (_,_)=>{
-            if(double.IsNaN(interval.Value)||entries.Any(e=>e.Global.IsChecked!=true&&double.IsNaN(e.Seconds.Value))){error.Message=L.T("Enter a refresh interval between 5 and 3600 seconds.");error.IsOpen=true;return;}
-            draft.Language=language.SelectedIndex==1?"en":"zh";draft.IntervalSeconds=(int)Math.Clamp(interval.Value,5,3600);
-            foreach(var entry in entries){
-                if(entry.Global.IsChecked==true)draft.DeviceIntervals.Remove(entry.Id);else draft.DeviceIntervals[entry.Id]=(int)Math.Clamp(entry.Seconds.Value,5,3600);
-                if(entry.Exclude.IsChecked==true)draft.ExcludedDevices.Add(entry.Id);else draft.ExcludedDevices.Remove(entry.Id);
-            }
-            save.IsEnabled=false;cancel.IsEnabled=false;
-            try{await apply(draft);}catch(Exception e){error.Message=ReadingNotice.Brief(e.Message);ToolTipService.SetToolTip(error,e.Message);error.IsOpen=true;}
-            finally{save.IsEnabled=true;cancel.IsEnabled=true;}
-        };
+        content.Children.Add(devices);content.Children.Add(error);
         return content;
     }
 }
+internal sealed record DeviceSettingsSlot(string DeviceId);

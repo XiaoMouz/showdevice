@@ -5,6 +5,18 @@ using Microsoft.UI.Xaml.Automation;
 namespace ShowDevice;
 // Consumes core/api AppSnapshot. No plugin code is loaded into this process.
 internal static class PluginPage {
+    // Future host insertion point. Only core-validated DeviceSettingsExtension
+    // objects may enter here; the existing renderer keeps every action disabled.
+    public static void RenderSettingsExtension(StackPanel panel,JsonElement device,JsonElement extension){
+        if(extension.GetProperty("plugin_id").GetString()!=device.GetProperty("plugin").GetString())
+            throw new InvalidDataException("Settings extension ownership mismatch");
+        var scope=extension.GetProperty("scope").GetString();
+        if(scope is not ("app_preference" or "device_configuration"))
+            throw new InvalidDataException("Unsupported settings extension scope");
+        var projected=System.Text.Json.Nodes.JsonNode.Parse(device.GetRawText())!;
+        projected["pages"]=new System.Text.Json.Nodes.JsonArray(System.Text.Json.Nodes.JsonNode.Parse(extension.GetProperty("page").GetRawText()));
+        Render(panel,JsonSerializer.SerializeToElement(projected));
+    }
     public static string Value(JsonElement state,string? key){
         if(key==null||!state.TryGetProperty(key,out var r))return L.T("Waiting for device");
         string availability=r.GetProperty("availability").GetString()!;
@@ -31,7 +43,7 @@ internal static class PluginPage {
             if(device.GetProperty("pages").GetArrayLength()>1)panel.Children.Add(new TextBlock{Text=L.T(page.GetProperty("title").GetString()!),FontSize=18});
             foreach(var section in page.GetProperty("nodes").EnumerateArray().GroupBy(n=>Section(n))){
                 var rows=new StackPanel{Spacing=4};
-                foreach(var node in section)Add(rows,node,state,caps);
+                foreach(var node in section)Add(rows,node,state,caps,ReadingNotice.Error(device));
                 if(rows.Children.Count==0)continue;
                 var heading=new StackPanel{Orientation=Orientation.Horizontal,Spacing=10,Margin=new Thickness(0,16,0,8)};
                 var icon=DeviceVisuals.Icon(section.Key,18);icon.Foreground=DeviceVisuals.Accent(DeviceVisuals.Kind(device));heading.Children.Add(icon);
@@ -44,7 +56,7 @@ internal static class PluginPage {
         string key=node.TryGetProperty("binding",out var b)&&b.ValueKind==JsonValueKind.String?b.GetString()!:"";
         return key.StartsWith("battery.")?"power":key is "keyboard.connection_mode" or "keyboard.bluetooth_channel"?"connection":key.StartsWith("lighting.")?"lighting":"settings";
     }
-    private static void Add(StackPanel parent,JsonElement node,JsonElement state,Dictionary<string,JsonElement> caps){
+    private static void Add(StackPanel parent,JsonElement node,JsonElement state,Dictionary<string,JsonElement> caps,string? error){
         if(!Condition(node,"visible_when",state))return;
         string label=L.T(node.GetProperty("label").GetString()!);
         string component=node.GetProperty("component").GetString()!;
@@ -52,7 +64,7 @@ internal static class PluginPage {
         if(DeviceVisuals.Unsupported(state,binding))return;
         if(component is "status" or "result"){
             if(binding=="battery.percent"){
-                var battery=DeviceVisuals.Battery(state);if(battery!=null)parent.Children.Add(battery);return;
+                var battery=DeviceVisuals.Battery(state,error:error);if(battery!=null)parent.Children.Add(battery);return;
             }
             if(binding=="battery.charging"&&state.TryGetProperty("battery.percent",out var percent)&&percent.GetProperty("availability").GetString()=="available"&&state.TryGetProperty(binding,out var charge)&&charge.GetProperty("availability").GetString()=="available")return;
             var metric=new Grid{Padding=new Thickness(0,12,0,12),ColumnSpacing=20};
@@ -62,7 +74,7 @@ internal static class PluginPage {
             Grid.SetColumn(readingText,1);metric.Children.Add(readingText);AutomationProperties.SetName(readingText,label+": "+Value(state,binding));parent.Children.Add(metric);return;
         }
         var row=new StackPanel{Spacing=6,Margin=new Thickness(0,4,0,8)};
-        if(component=="group"){row.Children.Add(new TextBlock{Text=label,FontSize=16});foreach(var child in node.GetProperty("children").EnumerateArray())Add(row,child,state,caps);parent.Children.Add(row);return;}
+        if(component=="group"){row.Children.Add(new TextBlock{Text=label,FontSize=16});foreach(var child in node.GetProperty("children").EnumerateArray())Add(row,child,state,caps,error);parent.Children.Add(row);return;}
         if(component is not ("toggle" or "button"))row.Children.Add(new TextBlock{Text=label,FontWeight=Microsoft.UI.Text.FontWeights.SemiBold});
         FrameworkElement control;
         JsonElement cap=default;if(binding!=null)caps.TryGetValue(binding,out cap);

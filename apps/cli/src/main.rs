@@ -160,6 +160,14 @@ fn schemas(out: &Path) -> Result<()> {
         ("app-snapshot", schemars::schema_for!(AppSnapshot)),
         ("app-command", schemars::schema_for!(AppCommand)),
         ("poll-preferences", schemars::schema_for!(PollPreferences)),
+        (
+            "device-settings-extension",
+            schemars::schema_for!(DeviceSettingsExtension),
+        ),
+        (
+            "device-settings-change",
+            schemars::schema_for!(DeviceSettingsChange),
+        ),
         ("descriptor", schemars::schema_for!(Descriptor)),
         ("host-message", schemars::schema_for!(HostMessage)),
         ("plugin-message", schemars::schema_for!(PluginMessage)),

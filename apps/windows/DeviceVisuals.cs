@@ -19,31 +19,46 @@ internal static class DeviceVisuals {
         return new SolidColorBrush(kind switch {"keyboard"=>Color.FromArgb(255,117,83,189),"mouse"=>Color.FromArgb(255,20,135,107),"headset"=>Color.FromArgb(255,56,115,190),_=>Color.FromArgb(255,100,116,139)});
     }
     public static bool Unsupported(JsonElement state,string? key) => key!=null && state.TryGetProperty(key,out var r) && r.GetProperty("availability").GetString()=="unsupported";
-    public static FrameworkElement? Battery(JsonElement state,bool compact=false) {
+    private static FrameworkElement ChargingMark(bool compact,Brush brush){
+        var bolt=new Microsoft.UI.Xaml.Shapes.Polygon{Fill=brush,Points=new PointCollection{
+            new(4,0),new(0,7),new(3,7),new(2,12),new(8,4),new(5,4)}};
+        var canvas=new Grid{Width=8,Height=12};canvas.Children.Add(bolt);
+        return new Viewbox{Child=canvas,Width=compact?7:11,Height=compact?9:14,VerticalAlignment=VerticalAlignment.Center,HorizontalAlignment=HorizontalAlignment.Center,IsHitTestVisible=false};
+    }
+    public static FrameworkElement? Battery(JsonElement state,bool compact=false,string? error=null) {
         if(!state.TryGetProperty("battery.percent",out var r)||Unsupported(state,"battery.percent"))return null;
         var row=new StackPanel{Orientation=Orientation.Horizontal,Spacing=compact?5:10,VerticalAlignment=VerticalAlignment.Center};
         var availability=r.GetProperty("availability").GetString();
         bool numeric=r.TryGetProperty("value",out var v)&&v.ValueKind==JsonValueKind.Number&&v.TryGetDouble(out double _);
         double percent=numeric?Math.Clamp(v.GetDouble(),0,100):0;
         bool fresh=availability=="available";
-        bool uncertain=ReadingNotice.UncertainBattery(availability);
+        bool failed=availability!="offline"&&ReadingNotice.IsParseFailure(error);
+        bool uncertain=!failed&&(ReadingNotice.UncertainBattery(availability)||(!numeric&&availability!="offline"));
+        bool isCharging=ReadingNotice.IsCharging(state);
         var brush=Resource("TextFillColorSecondaryBrush");
-        if(fresh&&!new Windows.UI.ViewManagement.AccessibilitySettings().HighContrast)
+        if(fresh&&!failed&&!new Windows.UI.ViewManagement.AccessibilitySettings().HighContrast)
             brush=new SolidColorBrush(percent<=20?Color.FromArgb(255,196,56,56):percent<=40?Color.FromArgb(255,169,111,0):Color.FromArgb(255,26,143,98));
         double width=compact?22:36, height=compact?11:18, inset=compact?2:3, terminal=compact?2:3;
-        var battery=new Grid{Width=width,Height=height,VerticalAlignment=VerticalAlignment.Center};
+        var battery=new Grid{Width=width,Height=failed?(compact?14:22):height,VerticalAlignment=VerticalAlignment.Center};
         battery.Children.Add(new Border{Width=width-terminal-1,Height=height,BorderThickness=new Thickness(compact?1:1.5),BorderBrush=brush,CornerRadius=new CornerRadius(compact?2:3),HorizontalAlignment=HorizontalAlignment.Left});
         battery.Children.Add(new Border{Width=terminal,Height=compact?5:7,Background=brush,HorizontalAlignment=HorizontalAlignment.Right,VerticalAlignment=VerticalAlignment.Center,CornerRadius=new CornerRadius(1)});
-        if(numeric&&availability!="offline"&&!uncertain)battery.Children.Add(new Border{Width=(width-terminal-1-inset*2)*percent/100,Height=height-inset*2,Background=brush,HorizontalAlignment=HorizontalAlignment.Left,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(inset,0,0,0),CornerRadius=new CornerRadius(1)});
+        if(numeric&&availability!="offline"&&!uncertain&&!failed&&!isCharging)battery.Children.Add(new Border{Width=(width-terminal-1-inset*2)*percent/100,Height=height-inset*2,Background=brush,HorizontalAlignment=HorizontalAlignment.Left,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(inset,0,0,0),CornerRadius=new CornerRadius(1)});
         if(uncertain)battery.Children.Add(new TextBlock{Text="?",FontFamily=new FontFamily("Segoe UI"),FontSize=compact?10:14,FontWeight=Microsoft.UI.Text.FontWeights.Bold,Foreground=brush,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,compact?-2:-1,terminal+1,0)});
+        if(isCharging&&!uncertain&&!failed){var bolt=ChargingMark(compact,brush);bolt.Margin=new Thickness(0,0,terminal+1,0);battery.Children.Add(bolt);}
+        if(failed){
+            battery.Children.Clear();
+            battery.Children.Add(new FontIcon{Glyph="\uE7BA",FontFamily=new FontFamily("Segoe Fluent Icons"),FontSize=compact?14:22,Foreground=Resource("SystemFillColorCautionBrush"),IsHitTestVisible=false});
+        }
         row.Children.Add(battery);
+        if(isCharging&&(uncertain||failed))row.Children.Add(ChargingMark(compact,brush));
         string text=availability=="offline"?L.T("Offline"):!numeric?"—":$"{percent:0}%";
-        row.Children.Add(new TextBlock{Text=text,FontSize=compact?14:24,FontWeight=Microsoft.UI.Text.FontWeights.SemiBold,VerticalAlignment=VerticalAlignment.Center});
-        if(!compact && state.TryGetProperty("battery.charging",out var charging)&&charging.GetProperty("availability").GetString()=="available"&&charging.GetProperty("value").ValueKind==JsonValueKind.True)
+        row.Children.Add(new TextBlock{Text=text,Foreground=fresh&&!failed?Resource("TextFillColorPrimaryBrush"):brush,FontSize=compact?14:24,FontWeight=Microsoft.UI.Text.FontWeights.SemiBold,VerticalAlignment=VerticalAlignment.Center});
+        if(!compact&&isCharging)
             row.Children.Add(new TextBlock{Text=L.T("Charging"),Foreground=brush,VerticalAlignment=VerticalAlignment.Center});
-        string hint=uncertain?ReadingNotice.BatteryHint(availability):L.T("Battery")+": "+text;
+        string hint=failed?ReadingNotice.Brief(error):uncertain||availability=="stale"?ReadingNotice.BatteryHint(availability):L.T("Battery")+": "+text;
+        if(isCharging)hint+=" · "+L.T("Charging");
         ToolTipService.SetToolTip(row,hint);
-        AutomationProperties.SetName(row,L.T("Battery")+": "+text+(uncertain?". "+hint:""));
+        AutomationProperties.SetName(row,uncertain?L.T("Battery")+": "+text+". "+hint:hint);
         return row;
     }
     public static FrameworkElement ListRow(JsonElement device) {
@@ -56,7 +71,7 @@ internal static class DeviceVisuals {
         line.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(1,GridUnitType.Star)});
         line.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});
         line.Children.Add(new TextBlock{Text=TypeName(device),Foreground=Resource("TextFillColorSecondaryBrush"),VerticalAlignment=VerticalAlignment.Center});
-        var battery=Battery(device.GetProperty("state"),true);
+        var battery=Battery(device.GetProperty("state"),true,ReadingNotice.Error(device));
         if(battery!=null){Grid.SetColumn(battery,1);battery.HorizontalAlignment=HorizontalAlignment.Right;line.Children.Add(battery);}
         labels.Children.Add(line);return grid;
     }

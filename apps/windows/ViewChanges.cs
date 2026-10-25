@@ -16,11 +16,14 @@ internal static class ViewChanges {
         Same(a.GetProperty("device"),b.GetProperty("device"),"id")&&
         Same(a.GetProperty("device"),b.GetProperty("device"),"name")&&
         Same(a,b,"device_kind")&&Same(a,b,"plugin")&&Same(a,b,"product_image");
+    private static bool BatteryFailure(JsonElement a,JsonElement b)=>ReadingNotice.IsParseFailure(ReadingNotice.Error(a))==ReadingNotice.IsParseFailure(ReadingNotice.Error(b));
     public static bool ListRow(JsonElement a,JsonElement b)=>
+        BatteryFailure(a,b)&&
         Same(a.GetProperty("device"),b.GetProperty("device"),"name")&&Same(a,b,"device_kind")&&
-        Reading(a.GetProperty("state"),b.GetProperty("state"),"battery.percent");
+        Reading(a.GetProperty("state"),b.GetProperty("state"),"battery.percent")&&
+        Reading(a.GetProperty("state"),b.GetProperty("state"),"battery.charging");
     public static bool Body(JsonElement a,JsonElement b){
-        if(!Same(a,b,"pages")||!Same(a,b,"capabilities")||!Same(a,b,"device_kind"))return false;
+        if(!BatteryFailure(a,b)||!Same(a,b,"pages")||!Same(a,b,"capabilities")||!Same(a,b,"device_kind"))return false;
         var before=a.GetProperty("state");var after=b.GetProperty("state");
         return before.EnumerateObject().Count()==after.EnumerateObject().Count()&&
             before.EnumerateObject().All(p=>Reading(before,after,p.Name));

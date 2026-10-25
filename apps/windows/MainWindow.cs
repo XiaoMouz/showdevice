@@ -162,23 +162,25 @@ public sealed class MainWindow : Window {
         FrameworkElement? settingsPage=null;
         void BuildSettings(){
             settingsPage=SettingsPage.Create(settings,async next=>{
+                bool languageChanged=next.Language!=settings.Language;
                 next.KnownDevices=new(settings.KnownDevices);
+                next.DeviceKinds=new(settings.DeviceKinds);
                 next.Save();settings=next;L.Language=settings.Language;
                 applying=true;
                 try{foreach(var id in deviceItems.Keys.Where(settings.ExcludedDevices.Contains).ToArray()){devices.Items.Remove(deviceItems[id]);deviceItems.Remove(id);models.Remove(id);}}
                 finally{applying=false;}
                 if(selected!=null&&!models.ContainsKey(selected))selected=models.Keys.FirstOrDefault();
-                previous="";UpdateLanguage();
+                previous="";if(languageChanged)UpdateLanguage();
                 await SendCommand(JsonSerializer.Serialize(new{type="settings",preferences=settings.PollPreferences()}));
-                BuildSettings();
-            },BuildSettings);
+                if(languageChanged)BuildSettings();
+            });
             if(settingsVisible)scroll.Content=settingsPage;
         }
         settingsNavigation.SelectionChanged+=(_,_)=>{
             if(settingsNavigation.SelectedItem==null)return;
             settingsVisible=true;
             applying=true;try{devices.SelectedItem=null;}finally{applying=false;}
-            if(settingsPage==null)BuildSettings();
+            BuildSettings();
             scroll.Content=settingsPage;
             scroll.ChangeView(null,0,null,true);
         };
@@ -290,6 +292,8 @@ public sealed class MainWindow : Window {
             foreach(var item in incoming){
                 string id=item.GetProperty("device").GetProperty("id").GetString()!,name=item.GetProperty("device").GetProperty("name").GetString()!;
                 if(settings.KnownDevices.Count<256&&settings.KnownDevices.GetValueOrDefault(id)!=name){settings.KnownDevices[id]=name;knownChanged=true;}
+                var kind=DeviceVisuals.Kind(item);
+                if(settings.KnownDevices.ContainsKey(id)&&settings.DeviceKinds.GetValueOrDefault(id)!=kind){settings.DeviceKinds[id]=kind;knownChanged=true;}
             }
             if(knownChanged){try{settings.Save();}catch(Exception e) when(e is IOException or UnauthorizedAccessException){ShowError(e.Message);}}
             var ids=incoming.Select(item=>item.GetProperty("device").GetProperty("id").GetString()!).ToHashSet();

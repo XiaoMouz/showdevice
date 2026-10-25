@@ -296,6 +296,33 @@ pub struct UiPage {
     pub optional: bool,
     pub nodes: Vec<UiNode>,
 }
+/// Reserved device-settings contribution. Not a live plugin message in v1.
+/// The host must validate ownership, capability bindings, components and limits
+/// before inserting this declarative page in a device's settings slot.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct DeviceSettingsExtension {
+    pub plugin_id: String,
+    pub id: String,
+    pub scope: DeviceSettingsScope,
+    pub page: UiPage,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DeviceSettingsScope {
+    /// Per-device app preferences, namespaced by plugin ID and extension ID.
+    AppPreference,
+    /// Requires the future validate/commit/read-back protocol; never auto-saved
+    /// as a device write by a UI change event.
+    DeviceConfiguration,
+}
+/// Reserved typed patch; deliberately absent from AppCommand/HostMessage.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct DeviceSettingsChange {
+    pub device_id: String,
+    pub plugin_id: String,
+    pub extension_id: String,
+    pub values: BTreeMap<String, serde_json::Value>,
+}
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Descriptor {
     /// Optional package-relative PNG/JPEG product artwork. Never a network URL.
@@ -496,6 +523,16 @@ fn write_limited<T: Serialize>(writer: &mut impl Write, value: &T, limit: usize)
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn settings_extensions_are_declarative_and_not_live_write_commands() {
+        let extension: DeviceSettingsExtension = serde_json::from_str(r#"{"plugin_id":"org.example.mouse","id":"power","scope":"device_configuration","page":{"id":"power","title":"Power","nodes":[]}}"#).unwrap();
+        assert!(matches!(
+            extension.scope,
+            DeviceSettingsScope::DeviceConfiguration
+        ));
+        assert_eq!(extension.plugin_id, "org.example.mouse");
+        assert!(serde_json::from_str::<AppCommand>(r#"{"type":"device_settings_change","device_id":"mouse","plugin_id":"org.example.mouse","extension_id":"power","values":{}}"#).is_err());
+    }
     #[test]
     fn polling_preferences_validate_and_override() {
         let mut prefs = PollPreferences::default();

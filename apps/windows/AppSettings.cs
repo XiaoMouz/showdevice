@@ -6,6 +6,7 @@ internal sealed class AppSettings {
     public Dictionary<string,int> DeviceIntervals {get;set;}=new();
     public HashSet<string> ExcludedDevices {get;set;}=new();
     public Dictionary<string,string> KnownDevices {get;set;}=new();
+    public Dictionary<string,string> DeviceKinds {get;set;}=new();
     private static string PathName=>Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"ShowDevice","settings.json");
     public static AppSettings Load(string? path=null){
         path??=PathName;
@@ -17,6 +18,7 @@ internal sealed class AppSettings {
             value.DeviceIntervals=(value.DeviceIntervals??new()).Where(p=>p.Value>=5&&p.Value<=3600).Take(256).ToDictionary();
             value.ExcludedDevices=(value.ExcludedDevices??new()).Take(256).ToHashSet();
             value.KnownDevices=(value.KnownDevices??new()).Take(256).ToDictionary();
+            value.DeviceKinds=(value.DeviceKinds??new()).Where(p=>value.KnownDevices.ContainsKey(p.Key)).Take(256).ToDictionary();
             return value;
         }catch(Exception e) when(e is IOException or UnauthorizedAccessException or JsonException){return new();}
     }
@@ -39,6 +41,8 @@ internal static class L {
         ["Keyboard"]="键盘",["Mouse"]="鼠标",["Headset"]="耳机",["Device"]="设备",["Power"]="电量",["Connection"]="连接",["Lighting"]="灯光",["Device settings"]="设备设置",
         ["Device status"]="设备状态",["Battery (%)"]="电量（%）",
         ["General"]="通用",["Global refresh interval (seconds)"]="全局刷新间隔（秒）",
+        ["Visible"]="显示",["Excluded"]="已排除",["Show device"]="显示设备",
+        ["Follow global"]="跟随全局",["Custom"]="自定义",["Refresh interval"]="刷新间隔",["Interval (seconds)"]="间隔（秒）",
         ["Access denied. Check permissions."]="访问被拒绝，请检查权限。",
         ["Device service unavailable. Restart the app."]="设备服务不可用，请重启应用。",
         ["Connection interrupted. Reconnect the device."]="连接中断，请重新连接设备。",
