@@ -2,6 +2,18 @@ name: Windows release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Existing release version (for example 0.1.0)'
+        required: true
+        type: string
+      flavor:
+        description: 'Add missing assets without replacing published files'
+        required: true
+        type: choice
+        options: [minimal, full, both]
+        default: minimal
 permissions:
   contents: read
 concurrency:
@@ -10,6 +22,9 @@ concurrency:
 jobs:
   package:
     runs-on: windows-latest
+    strategy:
+      matrix:
+        flavor: ${{ fromJSON(inputs.flavor == 'minimal' && '["minimal"]' || inputs.flavor == 'full' && '["full"]' || '["full","minimal"]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -22,22 +37,23 @@ jobs:
       - run: cargo test --workspace --locked
       - run: dotnet run --project tests/windows-refresh/RefreshChecks.csproj
       - run: dotnet run --project tests/updater/UpdateChecks.csproj
-      - run: ./tests/updater/integration.ps1
+      - run: ./tests/updater/integration.ps1 -Flavor ${{ matrix.flavor }}
       - name: Build and sign complete release
         shell: pwsh
         env:
           UPDATE_PRIVATE_KEY: ${{ secrets.UPDATE_PRIVATE_KEY }}
           UPDATE_PUBLIC_KEY: ${{ vars.UPDATE_PUBLIC_KEY }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ inputs.version && format('v{0}', inputs.version) || github.ref_name }}
           RELEASE_REPOSITORY: ${{ github.repository }}
-        run: ./scripts/release-windows.ps1 -Version $env:RELEASE_TAG.Substring(1) -Repository $env:RELEASE_REPOSITORY
+          RELEASE_FLAVOR: ${{ matrix.flavor }}
+        run: ./scripts/release-windows.ps1 -Version $env:RELEASE_TAG.Substring(1) -Repository $env:RELEASE_REPOSITORY -Flavor $env:RELEASE_FLAVOR
       - uses: actions/upload-artifact@v4
         with:
-          name: release
+          name: release-${{ matrix.flavor }}
           path: |
             artifacts/release-*/*.zip
-            artifacts/release-*/update.json
-            artifacts/release-*/update.sig
+            artifacts/release-*/update*.json
+            artifacts/release-*/update*.sig
           if-no-files-found: error
   publish:
     needs: package
@@ -47,13 +63,20 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: release
+          pattern: release-*
+          merge-multiple: true
           path: release
       - name: Publish immutable version assets
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ inputs.version && format('v{0}', inputs.version) || github.ref_name }}
           RELEASE_REPOSITORY: ${{ github.repository }}
+          SUPPLEMENT: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
           mapfile -d '' assets < <(find release -type f -print0)
-          gh release create "$RELEASE_TAG" "${assets[@]}" --repo "$RELEASE_REPOSITORY" --verify-tag --title "$RELEASE_TAG" --generate-notes
+          if [[ "$SUPPLEMENT" == "true" ]]; then
+            gh release view "$RELEASE_TAG" --repo "$RELEASE_REPOSITORY"
+            gh release upload "$RELEASE_TAG" "${assets[@]}" --repo "$RELEASE_REPOSITORY"
+          else
+            gh release create "$RELEASE_TAG" "${assets[@]}" --repo "$RELEASE_REPOSITORY" --verify-tag --title "$RELEASE_TAG" --generate-notes
+          fi

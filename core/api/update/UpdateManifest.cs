@@ -6,9 +6,9 @@ using System.Text.RegularExpressions;
 namespace ShowDevice.Updates;
 
 // V1 release contract: sign the exact manifest bytes, not reserialized JSON.
-public sealed record UpdateManifest(int Schema, string Version, string Platform, string Archive, long Size, string Sha256);
+public sealed record UpdateManifest(int Schema, string Version, string Platform, string Archive, long Size, string Sha256, string Flavor = "full");
 public sealed record UpdateEnvelope(string Manifest, string Signature);
-public sealed record ReleaseConfig(string Repository, string PublicKeyPem);
+public sealed record ReleaseConfig(string Repository, string PublicKeyPem, string Flavor = "full");
 public sealed record InstallState(string Current, string? Previous = null, bool Trial = false, string? Rejected = null);
 
 public static class UpdateContract {
@@ -16,13 +16,14 @@ public static class UpdateContract {
     public static bool ValidVersion(string value) => Regex.IsMatch(value, @"^\d{1,5}\.\d{1,5}\.\d{1,5}$") && System.Version.TryParse(value,out _);
     public static bool Newer(string candidate,string current) => ValidVersion(candidate)&&ValidVersion(current)&&System.Version.Parse(candidate)>System.Version.Parse(current);
     public static bool Configured(ReleaseConfig config) => Regex.IsMatch(config.Repository,@"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")&&!string.IsNullOrWhiteSpace(config.PublicKeyPem);
-    public static UpdateManifest Verify(UpdateEnvelope envelope, string publicKey) {
+    public static UpdateManifest Verify(UpdateEnvelope envelope, string publicKey, string flavor = "full") {
         var bytes=Convert.FromBase64String(envelope.Manifest);
         if(bytes.Length>16384)throw new InvalidDataException("Manifest too large");
         using var rsa=RSA.Create();rsa.ImportFromPem(publicKey);
         if(rsa.KeySize<3072||!rsa.VerifyData(bytes,Convert.FromBase64String(envelope.Signature),HashAlgorithmName.SHA256,RSASignaturePadding.Pss))throw new InvalidDataException("Invalid update signature");
         var m=JsonSerializer.Deserialize<UpdateManifest>(bytes)??throw new InvalidDataException("Missing manifest");
-        if(m.Schema!=1||!ValidVersion(m.Version)||m.Platform!="win-x64"||m.Archive!=$"ShowDevice-{m.Version}-win-x64-update.zip"||m.Size<=0||m.Size>MaxArchive||!Regex.IsMatch(m.Sha256,@"^[a-fA-F0-9]{64}$"))throw new InvalidDataException("Unsupported update manifest");
+        var suffix=flavor=="minimal"?"-minimal":"";
+        if(flavor is not ("full" or "minimal")||m.Flavor!=flavor||m.Schema!=1||!ValidVersion(m.Version)||m.Platform!="win-x64"||m.Archive!=$"ShowDevice-{m.Version}-win-x64{suffix}-update.zip"||m.Size<=0||m.Size>MaxArchive||!Regex.IsMatch(m.Sha256,@"^[a-fA-F0-9]{64}$"))throw new InvalidDataException("Unsupported update manifest");
         return m;
     }
     public static void VerifyArchive(string path, UpdateManifest m) {

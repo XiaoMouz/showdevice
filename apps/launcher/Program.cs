@@ -37,7 +37,7 @@ internal static class Program {
             using var installLock=Lock(Path.Combine(Cache,"download.lock"));
             if(installLock!=null&&Enabled()&&UpdateContract.Configured(Config())&&File.Exists(pending)){
                 try{
-                    var m=UpdateContract.Verify(Read<UpdateEnvelope>(pending),Config().PublicKeyPem);
+                    var m=UpdateContract.Verify(Read<UpdateEnvelope>(pending),Config().PublicKeyPem,Config().Flavor);
                     if(UpdateContract.Newer(m.Version,state.Current)&&m.Version!=state.Rejected){
                         var archive=Path.Combine(Cache,"package.zip");UpdateContract.VerifyArchive(archive,m);
                         var stage=Path.Combine(Root,"versions","stage-"+Guid.NewGuid().ToString("N"));
@@ -76,14 +76,15 @@ internal static class Program {
         var state=Read<InstallState>(StatePath);
         if(state.Trial)return;
         if(File.Exists(Path.Combine(Cache,"pending.json"))){
-            try{var ready=UpdateContract.Verify(Read<UpdateEnvelope>(Path.Combine(Cache,"pending.json")),config.PublicKeyPem);UpdateContract.VerifyArchive(Path.Combine(Cache,"package.zip"),ready);if(UpdateContract.Newer(ready.Version,state.Current)&&ready.Version!=state.Rejected){Status("ready",ready.Version);return;}}catch{}
+            try{var ready=UpdateContract.Verify(Read<UpdateEnvelope>(Path.Combine(Cache,"pending.json")),config.PublicKeyPem,config.Flavor);UpdateContract.VerifyArchive(Path.Combine(Cache,"package.zip"),ready);if(UpdateContract.Newer(ready.Version,state.Current)&&ready.Version!=state.Rejected){Status("ready",ready.Version);return;}}catch{}
         }
         using var client=new HttpClient{Timeout=TimeSpan.FromMinutes(10)};client.DefaultRequestHeaders.UserAgent.ParseAdd("ShowDevice-Updater/1");
         var baseUrl=$"https://github.com/{config.Repository}/releases/latest/download/";
-        var manifest=await Fetch(client,baseUrl+"update.json",16384);
-        var signature=await Fetch(client,baseUrl+"update.sig",2048);
+        var metadata=config.Flavor=="minimal"?"update-minimal":"update";
+        var manifest=await Fetch(client,baseUrl+metadata+".json",16384);
+        var signature=await Fetch(client,baseUrl+metadata+".sig",2048);
         var envelope=new UpdateEnvelope(Convert.ToBase64String(manifest),System.Text.Encoding.UTF8.GetString(signature).Trim());
-        var m=UpdateContract.Verify(envelope,config.PublicKeyPem);
+        var m=UpdateContract.Verify(envelope,config.PublicKeyPem,config.Flavor);
         if(!UpdateContract.Newer(m.Version,state.Current)||m.Version==state.Rejected){Status(m.Version==state.Rejected?"rolled_back":"current");return;}
         Status("downloading",m.Version);
         var temp=Path.Combine(Cache,"package.download");

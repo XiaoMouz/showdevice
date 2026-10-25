@@ -35,4 +35,5 @@ jobs:
       - run: dotnet run --project tests/windows-refresh/RefreshChecks.csproj
       - run: dotnet run --project tests/updater/UpdateChecks.csproj
       - run: ./tests/updater/integration.ps1
+      - run: ./tests/updater/integration.ps1 -Flavor minimal
 

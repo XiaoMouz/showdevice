@@ -1,4 +1,6 @@
+param([ValidateSet('full','minimal')][string]$Flavor='full')
 $ErrorActionPreference='Stop'
+$suffix=if($Flavor -eq 'minimal'){'-minimal'}else{''}
 $repo=Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $testRoot=Join-Path ([IO.Path]::GetTempPath()) ('showdevice-update-integration-'+[guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory $testRoot|Out-Null
@@ -12,14 +14,14 @@ function Pending($version){
     Copy-Item "$testRoot/fixture/*" $source -Recurse;[IO.File]::WriteAllText("$source/release-version.txt",$version);[IO.File]::WriteAllText("$source/dist/showdevice.exe",'fixture-only')
     New-Item -ItemType Directory -Force "$install/updates"|Out-Null
     $zip="$install/updates/package.zip";[IO.Compression.ZipFile]::CreateFromDirectory($source,$zip)
-    $m=@{Schema=1;Version=$version;Platform='win-x64';Archive="ShowDevice-$version-win-x64-update.zip";Size=(Get-Item $zip).Length;Sha256=(Get-FileHash $zip).Hash}
+    $m=@{Schema=1;Version=$version;Platform='win-x64';Flavor=$Flavor;Archive="ShowDevice-$version-win-x64$suffix-update.zip";Size=(Get-Item $zip).Length;Sha256=(Get-FileHash $zip).Hash}
     $bytes=[Text.Encoding]::UTF8.GetBytes(($m|ConvertTo-Json -Compress));$sig=$rsa.SignData($bytes,[Security.Cryptography.HashAlgorithmName]::SHA256,[Security.Cryptography.RSASignaturePadding]::Pss)
     @{Manifest=[Convert]::ToBase64String($bytes);Signature=[Convert]::ToBase64String($sig)}|ConvertTo-Json|Set-Content -Encoding utf8NoBOM "$install/updates/pending.json"
 }
 function Launch { $p=Start-Process "$install/ShowDevice.Launcher.exe" -PassThru -WindowStyle Hidden;if(!$p.WaitForExit(40000)){throw 'Launcher timeout'};Start-Sleep -Seconds 4 }
 try{
     # Never touch the real user install or network: isolated fixture executable and ephemeral key.
-    @{Repository='fixture/offline';PublicKeyPem=$rsa.ExportSubjectPublicKeyInfoPem()}|ConvertTo-Json|Set-Content -Encoding utf8NoBOM "$testRoot/config.json"
+    @{Repository='fixture/offline';PublicKeyPem=$rsa.ExportSubjectPublicKeyInfoPem();Flavor=$Flavor}|ConvertTo-Json|Set-Content -Encoding utf8NoBOM "$testRoot/config.json"
     Checked {dotnet build "$repo/apps/launcher/ShowDevice.Launcher.csproj" "-p:ReleaseConfigPath=$testRoot/config.json" -o "$testRoot/launcher"}
     Checked {dotnet build "$PSScriptRoot/fixture/Fixture.csproj" -o "$testRoot/fixture"}
     foreach($scenario in @('success','failure','interrupted','tampered')){

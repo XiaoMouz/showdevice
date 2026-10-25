@@ -14,6 +14,12 @@ try{
     var path=Zip("ShowDevice.exe","dist/showdevice.exe","release-version.txt");
     var m=new UpdateManifest(1,"1.2.3","win-x64","ShowDevice-1.2.3-win-x64-update.zip",new FileInfo(path).Length,Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))));
     var signed=Sign(m);Check(UpdateContract.Verify(signed,key.ExportSubjectPublicKeyInfoPem())==m,"valid RSA-PSS manifest");
+    var minimal=m with{Flavor="minimal",Archive="ShowDevice-1.2.3-win-x64-minimal-update.zip"};
+    Check(UpdateContract.Verify(Sign(minimal),key.ExportSubjectPublicKeyInfoPem(),"minimal")==minimal,"minimal signed manifest");
+    Reject(()=>UpdateContract.Verify(Sign(minimal),key.ExportSubjectPublicKeyInfoPem()),"full install rejects minimal update");
+    Reject(()=>UpdateContract.Verify(signed,key.ExportSubjectPublicKeyInfoPem(),"minimal"),"minimal install rejects full update");
+    var legacy=JsonSerializer.SerializeToUtf8Bytes(new{m.Schema,m.Version,m.Platform,m.Archive,m.Size,m.Sha256});
+    Check(UpdateContract.Verify(new(Convert.ToBase64String(legacy),Convert.ToBase64String(key.SignData(legacy,HashAlgorithmName.SHA256,RSASignaturePadding.Pss))),key.ExportSubjectPublicKeyInfoPem()).Flavor=="full","legacy manifest defaults to full");
     Reject(()=>UpdateContract.Verify(signed,other.ExportSubjectPublicKeyInfoPem()),"wrong signing key");
     Reject(()=>UpdateContract.Verify(signed with{Manifest=Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(m with{Version="2.0.0"}))},key.ExportSubjectPublicKeyInfoPem()),"tampered manifest");
     Reject(()=>UpdateContract.Verify(Sign(m with{Archive="../evil.zip"}),key.ExportSubjectPublicKeyInfoPem()),"signed but unsafe package name");
