@@ -1,0 +1,18 @@
+{
+  "validation": "experimental; no hardware available; tests use synthetic reports",
+  "model": "Rainy75 RGB Standard / Pro shared IDs; not Lite, RT, or custom ZMK",
+  "sources": [
+    "https://github.com/megadumbass/Rainy75Control/blob/9ef3263b5d5bf5f57606284e73e277b90b11e527/Rainy75Control-fix/repo/src/main.js",
+    "https://github.com/scholzri/rainy75-zmk/blob/main/docs/protocols.md",
+    "https://wiki.wobkey.com/en/Products/Rainy-75/Driver-Firmware"
+  ],
+  "implementation": "Independent implementation of VIA query format; no third-party source code copied.",
+  "format": "320F:5055 USB / 320F:5088 receiver; FF60:0061. VIA command 01 and CUSTOM_GET 08/channel 3/fields 1,2 only.",
+  "limitations": [
+    "No supported USB/receiver battery query found. No battery capability advertised.",
+    "Rainy75Control obtains battery from macOS Bluetooth services, not from VIA.",
+    "Reverse-engineering lighting observations come from Pro ISO hardware; standard firmware compatibility remains unverified.",
+    "Brightness is a 0-9 setting, not a percentage or master backlight power state.",
+    "A plugged-in receiver does not establish an active wireless keyboard connection."
+  ]
+}

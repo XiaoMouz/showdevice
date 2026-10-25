@@ -1,0 +1,93 @@
+{
+  "manifest": {
+    "id": "org.showdevice.rainy75",
+    "version": "0.1.0",
+    "api": ">=1.0.0, <2.0.0",
+    "wire": 1,
+    "executable": "sd-plugin-rainy75.exe",
+    "required": [
+      "hid.query.v1",
+      "state.snapshot.v1",
+      "ui.declarative.v1"
+    ],
+    "matches": [
+      {
+        "vendor_id": 12815,
+        "product_id": 20565,
+        "usage_page": 65376,
+        "usage": 97
+      },
+      {
+        "vendor_id": 12815,
+        "product_id": 20616,
+        "usage_page": 65376,
+        "usage": 97
+      }
+    ]
+  },
+  "device_kind": "keyboard",
+  "capabilities": [
+    {
+      "id": "keyboard.via_version",
+      "readable": true,
+      "writable": false,
+      "subscribable": false,
+      "value_type": {
+        "type": "number",
+        "min": 9,
+        "max": 12
+      }
+    },
+    {
+      "id": "lighting.brightness",
+      "readable": true,
+      "writable": false,
+      "subscribable": false,
+      "value_type": {
+        "type": "number",
+        "min": 0,
+        "max": 9
+      }
+    },
+    {
+      "id": "lighting.effect_id",
+      "readable": true,
+      "writable": false,
+      "subscribable": false,
+      "value_type": {
+        "type": "number",
+        "min": 0,
+        "max": 18
+      }
+    }
+  ],
+  "pages": [
+    {
+      "id": "overview",
+      "title": "Device status",
+      "nodes": [
+        {
+          "id": "keyboard_via_version",
+          "component": "status",
+          "version": 1,
+          "label": "VIA protocol",
+          "binding": "keyboard.via_version"
+        },
+        {
+          "id": "lighting_brightness",
+          "component": "status",
+          "version": 1,
+          "label": "Brightness level",
+          "binding": "lighting.brightness"
+        },
+        {
+          "id": "lighting_effect_id",
+          "component": "status",
+          "version": 1,
+          "label": "Lighting effect",
+          "binding": "lighting.effect_id"
+        }
+      ]
+    }
+  ]
+}

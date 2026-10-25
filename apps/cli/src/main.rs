@@ -116,7 +116,9 @@ fn package(root: &Path) -> Result<()> {
         .to_owned();
     let dest = root.join("dist/plugins");
     std::fs::create_dir_all(&dest)?;
-    for brand in ["razer", "hyperx", "rapoo", "nuphy", "sony", "mock"] {
+    for brand in [
+        "razer", "hyperx", "rapoo", "rainy75", "nuphy", "sony", "mock",
+    ] {
         let source = root.join("plugins").join(brand);
         let mut d: Descriptor =
             serde_json::from_slice(&std::fs::read(source.join("plugin.json"))?)?;
@@ -144,6 +146,9 @@ fn package(root: &Path) -> Result<()> {
             source.join("permissions.json"),
             out.join("permissions.json"),
         )?;
+        if source.join("protocol.json").is_file() {
+            std::fs::copy(source.join("protocol.json"), out.join("protocol.json"))?;
+        }
         std::fs::copy(target.join(filename), out.join(&d.manifest.executable))?;
         Package::load(&out)?;
     }
@@ -380,6 +385,40 @@ fn sd_device_features_mark_stale(state: &mut State) {
     }
 }
 fn self_test(root: PathBuf) -> Result<()> {
+    // Exercise actual plugin processes with synthetic protocol replies. No HID
+    // handles are opened, and no claim of hardware validation is implied.
+    for (brand, vid, pid, page, usage) in [
+        ("rapoo", 0x24ae, 0x46a5, 0xff00, 2),
+        ("rainy75", 0x320f, 0x5055, 0xff60, 0x61),
+    ] {
+        let package = Package::load(&root.join(brand))?;
+        let device: Device = serde_json::from_value(serde_json::json!({
+            "id":"synthetic", "name":brand, "vendor_id":vid, "product_id":pid,
+            "interface":1, "usage_page":page, "usage":usage, "connection":"usb"
+        }))?;
+        let mut broker = Broker::new(move |query| match query {
+            Query::HidInput { .. } if brand == "rapoo" => Ok(vec![7, 0x21, 0, 0, 0, 0, 0, 1, 73]),
+            Query::HidOutput { request, .. } if brand == "rainy75" => {
+                let mut reply = vec![0; 32];
+                match request.as_slice() {
+                    [0, 1, ..] => reply[..3].copy_from_slice(&[1, 0, 11]),
+                    [0, 8, 3, id @ (1 | 2), ..] => reply[..4].copy_from_slice(&[8, 3, *id, 4]),
+                    _ => return Err("unexpected query".into()),
+                }
+                Ok(reply)
+            }
+            _ => Err("unexpected transport".into()),
+        });
+        let mut session = Session::launch(&package, &device)?;
+        let state = session.poll(&mut broker)?;
+        let (key, expected) = if brand == "rapoo" {
+            ("battery.percent", 73)
+        } else {
+            ("keyboard.via_version", 11)
+        };
+        anyhow::ensure!(state[key].value == Some(expected.into()), "replay mismatch");
+        println!("PASS {brand}: synthetic protocol replay through plugin IPC");
+    }
     let original = Package::load(&root.join("mock"))?;
     let temp = std::env::temp_dir().join(format!("showdevice-test-{}", std::process::id()));
     std::fs::create_dir_all(&temp)?;

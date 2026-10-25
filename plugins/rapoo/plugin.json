@@ -1,7 +1,7 @@
 {
   "manifest": {
     "id": "org.showdevice.rapoo",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "api": ">=1.0.0, <2.0.0",
     "wire": 1,
     "executable": "sd-plugin-rapoo.exe",
@@ -9,7 +9,20 @@
       "state.snapshot.v1",
       "ui.declarative.v1"
     ],
-    "matches": []
+    "matches": [
+      {
+        "vendor_id": 9390,
+        "product_id": 18085,
+        "usage_page": 65280,
+        "usage": 2
+      },
+      {
+        "vendor_id": 9390,
+        "product_id": 5285,
+        "usage_page": 65280,
+        "usage": 2
+      }
+    ]
   },
   "capabilities": [
     {

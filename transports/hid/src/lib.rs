@@ -46,6 +46,8 @@ impl Inventory {
                 connection: match d.bus_type() {
                     hidapi::BusType::Bluetooth => Connection::Ble,
                     _ if (d.vendor_id() == 0x1532 && d.product_id() == 0x00a6)
+                        || (d.vendor_id() == 0x24ae && d.product_id() == 0x14a5)
+                        || (d.vendor_id() == 0x320f && d.product_id() == 0x5088)
                         || (d.vendor_id() == 0x03f0
                             && [0x02cc, 0x06be].contains(&d.product_id())) =>
                     {

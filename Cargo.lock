@@ -692,6 +692,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "sd-plugin-rainy75"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "sd-api",
+ "sd-sdk",
+ "serde_json",
+]
+
+[[package]]
 name = "sd-plugin-rapoo"
 version = "0.1.0"
 dependencies = [

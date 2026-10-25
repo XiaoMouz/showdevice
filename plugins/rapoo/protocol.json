@@ -1,0 +1,14 @@
+{
+  "validation": "experimental; no hardware available; tests use synthetic reports",
+  "model": "VT3 PRO V2 (Nordic nRF54L15), not VT3 PRO",
+  "sources": [
+    "https://hid.rapoo.cn/AHUB_WEB/dist/assets/js/index-3ShGzFuu.js",
+    "https://github.com/Anxiu29/ty/blob/dd2f8289192a4f150a71c222181a453000c95085/src/protocols/protocol_api_rapoo.js"
+  ],
+  "implementation": "Independent read-only implementation of protocol facts; no third-party source code copied.",
+  "format": "24AE:46A5 USB / 24AE:14A5 receiver; FF00:0002; input report 7; battery at payload offset 7 (HIDAPI offset 8).",
+  "limitations": [
+    "Charging state and DPI not advertised until their units/enums are verified.",
+    "No legacy BA/BB commands, firmware endpoints, or output writes."
+  ]
+}

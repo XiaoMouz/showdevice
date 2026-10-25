@@ -2,7 +2,8 @@
   "queries": {
     "status": {
       "kind": "hid_input",
-      "response_len": 64
+      "response_len": 64,
+      "latest": true
     }
   }
 }

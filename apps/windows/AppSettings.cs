@@ -96,6 +96,7 @@ internal static class L {
         ["Connect a supported device"]="连接支持的设备",["Connect a receiver or USB cable, then refresh."]="连接接收器或 USB 线后刷新。",["Unable to read devices"]="无法读取设备",
         ["Keyboard"]="键盘",["Mouse"]="鼠标",["Headset"]="耳机",["Device"]="设备",["Power"]="电量",["Connection"]="连接",["Lighting"]="灯光",["Device settings"]="设备设置",
         ["Device status"]="设备状态",["Battery (%)"]="电量（%）",
+        ["VIA protocol"]="VIA 协议版本",["Brightness level"]="亮度档位",["Lighting effect"]="灯效编号",
         ["General"]="通用",["Global refresh interval (seconds)"]="全局刷新间隔（秒）",
         ["Visible"]="显示",["Excluded"]="已排除",["Show device"]="显示设备",
         ["Follow global"]="跟随全局",["Custom"]="自定义",["Refresh interval"]="刷新间隔",["Interval (seconds)"]="间隔（秒）",

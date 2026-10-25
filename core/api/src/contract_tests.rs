@@ -1,5 +1,59 @@
 use crate::*;
 #[test]
+fn new_plugins_match_only_known_models_and_configuration_collections() {
+    for (json, vid, pids, page, usage, excluded) in [
+        (
+            include_str!("../../../plugins/rapoo/plugin.json"),
+            0x24ae,
+            [0x46a5, 0x14a5],
+            0xff00,
+            2,
+            0x1215,
+        ),
+        (
+            include_str!("../../../plugins/rainy75/plugin.json"),
+            0x320f,
+            [0x5055, 0x5088],
+            0xff60,
+            0x61,
+            0x352f,
+        ),
+    ] {
+        let descriptor: Descriptor = serde_json::from_str(json).unwrap();
+        descriptor.manifest.validate().unwrap();
+        let mut device: Device = serde_json::from_value(serde_json::json!({
+            "id":"synthetic", "name":"test", "vendor_id":vid, "product_id":pids[0],
+            "interface":1, "usage_page":page, "usage":usage, "connection":"usb"
+        }))
+        .unwrap();
+        let matches = |d: &Device| {
+            descriptor
+                .manifest
+                .matches
+                .iter()
+                .any(|m| m.score(d).is_some())
+        };
+        for pid in pids {
+            device.product_id = pid;
+            assert!(matches(&device));
+        }
+        device.usage = 14; // Firmware/input collections must never be claimed.
+        assert!(!matches(&device));
+        device.usage = usage;
+        device.product_id = excluded;
+        assert!(!matches(&device));
+        assert!(descriptor.capabilities.iter().all(|c| !c.writable));
+        if vid == 0x320f {
+            assert!(
+                descriptor
+                    .capabilities
+                    .iter()
+                    .all(|c| !c.id.starts_with("battery."))
+            );
+        }
+    }
+}
+#[test]
 fn halo96_match_requires_model_and_request_collection() {
     let descriptor: Descriptor =
         serde_json::from_str(include_str!("../../../plugins/nuphy/plugin.json")).unwrap();

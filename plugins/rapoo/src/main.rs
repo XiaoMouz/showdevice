@@ -1,4 +1,4 @@
-use anyhow::{Result, bail};
+use anyhow::Result;
 use sd_api::*;
 struct Rapoo {
     descriptor: Descriptor,
@@ -8,27 +8,18 @@ impl sd_sdk::Plugin for Rapoo {
         self.descriptor.clone()
     }
     fn poll(&mut self, _: &Device, io: &mut sd_sdk::Client) -> Result<State> {
-        let mut s = State::new();
-        match io.query("status") {
-            Ok(b) => {
-                let payload = if b.first() == Some(&7) {
-                    &b[1..]
-                } else {
-                    &b[..]
-                };
-                if payload.len() < 8 || payload[0] != 0x20 || payload[7] > 100 {
-                    bail!("invalid Rapoo status");
-                }
-                s.insert(
-                    "battery.percent".into(),
-                    Reading::available(payload[7], "rapoo"),
-                );
-            }
-            Err(_) => {
-                s.insert("battery.percent".into(), Reading::unknown("rapoo"));
+        // Passive reports may be seconds apart; never send legacy VT3 commands.
+        for _ in 0..4 {
+            if let Ok(bytes) = io.query("status")
+                && bytes.first() == Some(&7)
+            {
+                return sd_plugin_rapoo::parse(&bytes);
             }
         }
-        Ok(s)
+        Ok(State::from([(
+            "battery.percent".into(),
+            Reading::unknown("rapoo.nrf54l"),
+        )]))
     }
 }
 fn main() -> Result<()> {
