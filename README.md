@@ -1,15 +1,5 @@
 # ShowDevice
 
-跨平台、离线、只读的设备状态工具。Rust 共享核心，独立进程插件，系统原生 UI。公共契约只有一个来源：`core/api`。
-
-## 当前状态
-
-- BLE：提供可选的 WinRT/CoreBluetooth/BlueZ 后端、受限特征读取及订阅；Windows 编译通过。尚未接入已验证的设备配置，宿主不启用 BLE 插件能力，不能声称支持蓝牙设备。
-- 配置下发：契约及模拟测试，宿主无真实写入入口。编辑控件保持禁用。
-- 应用功能：提醒去重、有限历史和偏好默认值作为独立库提供；通知投递、持久化设置与托盘尚未接入。
-
-这些边界是刻意显式的：有源码或接口不等于已经完成平台/设备兼容验证。
-
 ## Windows 开发
 
 需要 Rust MSVC、Visual Studio C++ Build Tools/Windows SDK、.NET 10 SDK。构建时包管理器需要获取依赖；运行时没有网络功能。
@@ -49,6 +39,4 @@ Linux：安装 HID/GTK 开发运行依赖（例如 Debian/Ubuntu 的 `libudev-de
 
 ## 扩展
 
-本地包由 `plugin.json`、`permissions.json` 和可执行文件组成。复制到 `dist/plugins/<package>` 后重启宿主；必须先运行校验器。插件是可信本地代码，进程隔离不是恶意代码沙箱。
-
-
+本地包由 `plugin.json`、`permissions.json` 和可执行文件组成。复制到 `dist/plugins/<package>` 后重启宿主；必须先运行校验器。
