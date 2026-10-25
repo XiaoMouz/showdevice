@@ -4,6 +4,7 @@
 **/.build/
 /dist/
 /artifacts/
+update-private.pem
 .DS_Store
 **/__pycache__/
 

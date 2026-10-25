@@ -43,7 +43,7 @@ internal sealed class AppSession : IDisposable {
                 string? line=await ReadLine(core.StandardOutput);if(line==null)break;
                 using var document=JsonDocument.Parse(line,new JsonDocumentOptions{MaxDepth=64});
                 var snapshot=document.RootElement.Clone();
-                dispatcher.TryEnqueue(()=>{if(disposed)return;Latest=snapshot;Snapshot?.Invoke(snapshot);});
+                dispatcher.TryEnqueue(()=>{if(disposed)return;Latest=snapshot;Snapshot?.Invoke(snapshot);UpdateIntegration.Ready();});
             }
             var message=await errors;
             if(!disposed)dispatcher.TryEnqueue(()=>Failed?.Invoke("Local core stopped. "+message));

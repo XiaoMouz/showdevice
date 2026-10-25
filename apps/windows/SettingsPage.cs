@@ -42,6 +42,15 @@ internal static class SettingsPage {
             finally{done.SetResult();}
         }
         content.Children.Add(new TextBlock{Text=L.T("Settings"),FontSize=28,FontWeight=Microsoft.UI.Text.FontWeights.SemiBold});
+        var updates=new StackPanel{Spacing=8};updates.Children.Add(Heading("Updates"));
+        var automatic=new ToggleSwitch{IsOn=draft.AutoUpdate,IsEnabled=UpdateIntegration.InstallRoot!=null,OnContent="",OffContent="",MinWidth=0};
+        updates.Children.Add(Field("Automatic updates",automatic,SettingIcon("\uE895")));
+        var updateStatus=new TextBlock{Text=UpdateIntegration.VersionLabel+" · "+UpdateIntegration.Status(),TextWrapping=TextWrapping.Wrap,Foreground=DeviceVisuals.Resource("TextFillColorSecondaryBrush"),Margin=new(36,0,0,8)};
+        updates.Children.Add(updateStatus);content.Children.Add(Panel(updates));
+        automatic.Toggled+=(_,_)=>{draft.AutoUpdate=automatic.IsOn;Commit();};
+        var updateTimer=new DispatcherTimer{Interval=TimeSpan.FromSeconds(3)};
+        updateTimer.Tick+=(_,_)=>updateStatus.Text=UpdateIntegration.VersionLabel+" · "+UpdateIntegration.Status();
+        updates.Loaded+=(_,_)=>updateTimer.Start();updates.Unloaded+=(_,_)=>updateTimer.Stop();
         var general=new StackPanel{Spacing=8};general.Children.Add(Heading("General"));
         var language=new ComboBox{HorizontalAlignment=HorizontalAlignment.Stretch};
         language.Items.Add("简体中文");language.Items.Add("English");language.SelectedIndex=current.Language=="en"?1:0;

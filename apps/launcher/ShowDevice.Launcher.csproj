@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType><TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
+    <ApplicationIcon>../../ui/assets/showdevice-icon.ico</ApplicationIcon>
+    <AssemblyName>ShowDevice.Launcher</AssemblyName>
+    <ReleaseConfigPath Condition="'$(ReleaseConfigPath)' == ''">release-config.json</ReleaseConfigPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../core/api/update/UpdateManifest.cs" Link="UpdateManifest.cs" />
+    <EmbeddedResource Include="$(ReleaseConfigPath)" LogicalName="ShowDevice.Launcher.release-config.json" />
+  </ItemGroup>
+</Project>

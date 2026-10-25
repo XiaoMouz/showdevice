@@ -19,5 +19,14 @@
   <ItemGroup><Compile Include="../../ui/native/windows/PluginPage.cs" Link="PluginPage.cs" /></ItemGroup>
   <ItemGroup><Content Include="../../ui/assets/showdevice-icon.png" Link="Assets/showdevice-icon.png" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
   <ItemGroup><Content Include="../../ui/assets/showdevice-icon.ico" Link="Assets/showdevice-icon.ico" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
+  <!-- Unpackaged WinUI resources are generated after publish item discovery. -->
+  <Target Name="PublishWinUIResources" AfterTargets="Publish">
+    <ItemGroup>
+      <WinUIResource Include="$(TargetDir)$(AssemblyName).pri" />
+      <WinUIResource Include="$(TargetDir)**/*.xbf" />
+    </ItemGroup>
+    <Error Condition="!Exists('$(TargetDir)$(AssemblyName).pri')" Text="The application PRI is missing; refusing an incomplete publish." />
+    <Copy SourceFiles="@(WinUIResource)" DestinationFiles="@(WinUIResource->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')" />
+  </Target>
 </Project>
 

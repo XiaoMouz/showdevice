@@ -90,16 +90,25 @@ fn with_broker<T>(
     result
 }
 
+struct WorkerContext {
+    demo: bool,
+    preferences: std::sync::Arc<std::sync::RwLock<PollPreferences>>,
+    demand: std::sync::Arc<std::sync::RwLock<Demand>>,
+}
+
 fn worker(
     package: Package,
     device: Device,
     generation: u64,
     events: SyncSender<Event>,
     control: Receiver<Control>,
-    demo: bool,
-    preferences: std::sync::Arc<std::sync::RwLock<PollPreferences>>,
-    demand: std::sync::Arc<std::sync::RwLock<Demand>>,
+    context: WorkerContext,
 ) {
+    let WorkerContext {
+        demo,
+        preferences,
+        demand,
+    } = context;
     let mut view = DeviceView {
         surface_templates: package.descriptor.surface_templates.clone(),
         product_image: package.product_image(),
@@ -342,7 +351,18 @@ pub fn run(root: &Path, demo: bool) -> Result<()> {
                     let prefs = preferences.clone();
                     let interest = demand.clone();
                     let thread = std::thread::spawn(move || {
-                        worker(package, device, g, events, jobs, demo, prefs, interest)
+                        worker(
+                            package,
+                            device,
+                            g,
+                            events,
+                            jobs,
+                            WorkerContext {
+                                demo,
+                                preferences: prefs,
+                                demand: interest,
+                            },
+                        )
                     });
                     actors.insert(
                         id,

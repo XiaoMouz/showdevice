@@ -1,0 +1,59 @@
+name: Windows release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: cargo fmt --all --check
+      - run: cargo test --workspace --locked
+      - run: dotnet run --project tests/windows-refresh/RefreshChecks.csproj
+      - run: dotnet run --project tests/updater/UpdateChecks.csproj
+      - run: ./tests/updater/integration.ps1
+      - name: Build and sign complete release
+        shell: pwsh
+        env:
+          UPDATE_PRIVATE_KEY: ${{ secrets.UPDATE_PRIVATE_KEY }}
+          UPDATE_PUBLIC_KEY: ${{ vars.UPDATE_PUBLIC_KEY }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+        run: ./scripts/release-windows.ps1 -Version $env:RELEASE_TAG.Substring(1) -Repository $env:RELEASE_REPOSITORY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: |
+            artifacts/release-*/*.zip
+            artifacts/release-*/update.json
+            artifacts/release-*/update.sig
+          if-no-files-found: error
+  publish:
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: release
+      - name: Publish immutable version assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+        run: |
+          mapfile -d '' assets < <(find release -type f -print0)
+          gh release create "$RELEASE_TAG" "${assets[@]}" --repo "$RELEASE_REPOSITORY" --verify-tag --title "$RELEASE_TAG" --generate-notes

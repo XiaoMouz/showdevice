@@ -3,6 +3,7 @@ namespace ShowDevice;
 internal sealed class AppSettings {
     public string Language {get;set;}="zh";
     public string Theme {get;set;}="system";
+    public bool AutoUpdate {get;set;}=true;
     public SurfacePreferences Surfaces {get;set;}=new();
     public Personalization Personalization {get;set;}=new();
     public int IntervalSeconds {get;set;}=30;
@@ -40,6 +41,14 @@ internal static class L {
     public static string Language {get;set;}="zh";
     public static string T(string english)=>Language=="en"?english:Translations.GetValueOrDefault(english,english);
     private static readonly Dictionary<string,string> Translations=new(){
+        ["Updates"]="更新",["Automatic updates"]="自动更新",
+        ["Updates are available in release builds"]="正式发布版支持自动更新",
+        ["Downloaded; installs next time you start the app"]="已下载，下次启动应用时安装",
+        ["Downloading update…"]="正在下载更新…",["Up to date"]="已是最新版本",
+        ["Previous version restored"]="已回退到上一版本",["Update source is not configured"]="尚未配置更新源",
+        ["Update could not be installed; current version kept"]="更新未能安装，已保留当前版本",
+        ["Update check unavailable; will retry later"]="暂时无法检查更新，将稍后重试",
+        ["Checks automatically in the background"]="将在后台自动检查更新",
         ["Theme"]="深浅色模式",["Follow system"]="跟随系统",["Follow app"]="跟随应用",["Light"]="浅色",["Dark"]="深色",
         ["Background color"]="背景颜色",["Image dimensions are too large."]="图片尺寸过大，请缩小后重试。",
         ["Personalization"]="个性化",

@@ -429,7 +429,7 @@ pub enum HostMessage {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum PluginMessage {
-    Hello { descriptor: Descriptor },
+    Hello { descriptor: Box<Descriptor> },
     Ready,
     Query { request_id: u64, name: String },
     Snapshot { request_id: u64, state: State },

@@ -55,7 +55,7 @@ pub fn serve(mut plugin: impl Plugin) -> Result<()> {
     write_frame(
         &mut io.output,
         &PluginMessage::Hello {
-            descriptor: plugin.descriptor(),
+            descriptor: Box::new(plugin.descriptor()),
         },
     )?;
     let HostMessage::Activate { device } = read_frame(&mut io.input)? else {
