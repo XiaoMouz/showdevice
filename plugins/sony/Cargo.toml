@@ -1,0 +1,11 @@
+[package]
+name = "sd-plugin-sony"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+[dependencies]
+sd-api.workspace = true
+sd-sdk.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+

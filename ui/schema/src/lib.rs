@@ -126,6 +126,26 @@ pub fn validate(descriptor: &Descriptor) -> Result<Vec<UiPage>, String> {
         }
         pages.push(page.clone());
     }
+    if descriptor.surface_templates.len() > 4 {
+        return Err("surface template limit".into());
+    }
+    let mut targets = BTreeSet::new();
+    for template in &descriptor.surface_templates {
+        if !targets.insert(template.surface.clone()) {
+            return Err("duplicate surface target".into());
+        }
+        let supported = matches!(
+            template.style.as_str(),
+            "native.details.v1" | "mouse.dpi.v1" | "audio.controls.v1"
+        );
+        let page = pages.iter().any(|p| p.id == template.page_id);
+        if (!supported || !page) && !template.optional {
+            return Err("required surface template unavailable".into());
+        }
+        if template.page_id.len() > 96 || template.style.len() > 96 {
+            return Err("invalid surface template identifier".into());
+        }
+    }
     Ok(pages)
 }
 pub fn condition(c: &Option<Condition>, state: &State, writes: bool) -> bool {

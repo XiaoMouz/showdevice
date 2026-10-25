@@ -232,13 +232,28 @@ impl Handle {
                     }
                 }
             }
-            Query::HidInput { response_len } => {
+            Query::HidInput {
+                response_len,
+                latest,
+            } => {
                 let mut data = vec![0; response_len];
                 let n = self.primary.read_timeout(&mut data, 1000)?;
                 if n == 0 {
                     bail!("waiting for device report");
                 }
                 data.truncate(n);
+                if latest {
+                    // Bounded drain of streaming input; preserve command/reply readers by opt-in.
+                    let mut next = vec![0; response_len];
+                    for _ in 0..256 {
+                        let n = self.primary.read_timeout(&mut next, 0)?;
+                        if n == 0 {
+                            break;
+                        }
+                        data.clear();
+                        data.extend_from_slice(&next[..n]);
+                    }
+                }
                 Ok(data)
             }
             Query::BleRead { .. } => bail!("BLE request cannot use a HID handle"),

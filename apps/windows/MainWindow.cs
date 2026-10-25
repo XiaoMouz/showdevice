@@ -16,25 +16,33 @@ public sealed class MainWindow : Window {
     private readonly Button refresh = new() { Content = new FontIcon{Glyph="\uE72C",FontFamily=new FontFamily("Segoe Fluent Icons"),FontSize=16}, IsEnabled = false, Width=28,Height=28,MinWidth=0,MinHeight=0,Padding=new Thickness(0) };
     private readonly Dictionary<string, JsonElement> models = new();
     private readonly Dictionary<string,ListViewItem> deviceItems = new();
-    private readonly StackPanel readings = new(){Spacing=4};
-    private readonly InfoBar deviceError = new(){IsClosable=false,Severity=InfoBarSeverity.Warning,Title="Reading unavailable"};
+    private readonly StackPanel readings = new(){Spacing=4,Margin=new Thickness(DeviceVisuals.DetailInset,0,DeviceVisuals.DetailInset,0)};
+    private readonly InfoBar deviceError = new(){IsClosable=false,Severity=InfoBarSeverity.Warning,Title="Reading unavailable",Margin=new Thickness(DeviceVisuals.DetailInset,12,DeviceVisuals.DetailInset,0)};
     private bool applying;
     private bool compactList;
     private bool settingsVisible;
+    private bool personalizationVisible;
+    private BackgroundLayer? mainBackground,deviceBackground;
+    private ThemeResources? themeResources;
     private AppSettings settings=AppSettings.Load();
-    private readonly SemaphoreSlim commandLock=new(1,1);
+    private readonly AppSession session;
+    internal event Action? Hidden;
+    private bool exiting;
     private WindowPreferences preferences=WindowPreferences.Load(WindowPreferences.FilePath);
     private readonly DispatcherTimer saveTimer=new(){Interval=TimeSpan.FromMilliseconds(400)};
     private Storyboard? switchAnimation;
     private Storyboard? paneAnimation;
     private JsonElement? renderedDevice;
     private bool emptyRendered;
-    private Process? core;
+
     private string? selected;
     private string previous = "";
     private TextBlock? updated;
     private readonly DispatcherTimer clock = new(){Interval=TimeSpan.FromSeconds(1)};
-    public MainWindow() {
+    internal MainWindow(AppSession session) {
+        this.session=session;settings=session.Settings;
+        session.Snapshot+=Apply;
+        session.Failed+=ShowError;
         Title = "ShowDevice";
         L.Language=settings.Language;
         RestoreWindow();
@@ -71,7 +79,11 @@ public sealed class MainWindow : Window {
         settingsRow.Children.Add(settingsIcon);settingsRow.Children.Add(settingsLabel);
         var settingsItem=new ListViewItem{Content=settingsRow,HorizontalContentAlignment=HorizontalAlignment.Stretch};
         var settingsNavigation=new ListView{SelectionMode=ListViewSelectionMode.Single,Margin=new Thickness(0,0,0,12)};
-        settingsNavigation.Items.Add(settingsItem);
+        var personalizeIcon=new FontIcon{Glyph="\uE790",FontFamily=new FontFamily("Segoe Fluent Icons"),FontSize=18};
+        var personalizeLabel=new TextBlock{Text=L.T("Personalization"),VerticalAlignment=VerticalAlignment.Center};
+        var personalizeRow=new StackPanel{Orientation=Orientation.Horizontal,Spacing=14,Height=44};personalizeRow.Children.Add(personalizeIcon);personalizeRow.Children.Add(personalizeLabel);
+        var personalizeItem=new ListViewItem{Content=personalizeRow,HorizontalContentAlignment=HorizontalAlignment.Stretch};
+        settingsNavigation.Items.Add(personalizeItem);settingsNavigation.Items.Add(settingsItem);
         pane.Children.Add(settingsNavigation);Grid.SetRow(settingsNavigation,3);
         var paneHeader=new Grid{Padding=new Thickness(12,0,0,0)};
         paneHeader.ColumnDefinitions.Add(new ColumnDefinition());
@@ -83,11 +95,12 @@ public sealed class MainWindow : Window {
         pane.Children.Add(paneHeader);pane.Children.Add(status);Grid.SetRow(status,1);status.Margin=new Thickness(12,0,0,0);
         AutomationProperties.SetName(devices,"Connected devices");
         pane.Children.Add(devices);Grid.SetRow(devices,2);paneSlot.Children.Add(pane);
-        var scroll=new ScrollViewer { Content=detail, HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled };
+        deviceBackground=new BackgroundLayer(detail,12,true);
+        var scroll=new ScrollViewer { Content=deviceBackground,VerticalContentAlignment=VerticalAlignment.Stretch, HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled };
         body.Children.Add(scroll);Grid.SetColumn(scroll,1);root.Children.Add(body);Grid.SetRow(body,2);
         void UpdatePane(bool animate=false){
             bool useMotion=animate&&new Windows.UI.ViewManagement.UISettings().AnimationsEnabled;
-            var movers=new List<FrameworkElement>{refresh,settingsIcon};
+            var movers=new List<FrameworkElement>{refresh,settingsIcon,personalizeIcon};
             movers.AddRange(deviceItems.Values.Select(row=>((Grid)row.Content).Children[0]).OfType<FrameworkElement>());
             var positions=useMotion?movers.ToDictionary(element=>element,element=>element.TransformToVisual(body).TransformPoint(new Windows.Foundation.Point())):null;
             var sizes=useMotion?movers.OfType<FontIcon>().ToDictionary(icon=>icon,icon=>icon.FontSize*(icon.RenderTransform is CompositeTransform current?current.ScaleX:1)):null;
@@ -108,6 +121,7 @@ public sealed class MainWindow : Window {
             settingsItem.HorizontalAlignment=compactList?HorizontalAlignment.Center:HorizontalAlignment.Stretch;
             settingsItem.Padding=compactList?new Thickness(0):new Thickness(18,0,12,0);
             settingsRow.HorizontalAlignment=compactList?HorizontalAlignment.Center:HorizontalAlignment.Left;
+            personalizeLabel.Visibility=settingsLabel.Visibility;personalizeItem.Width=settingsItem.Width;personalizeItem.HorizontalAlignment=settingsItem.HorizontalAlignment;personalizeItem.Padding=settingsItem.Padding;personalizeRow.HorizontalAlignment=settingsRow.HorizontalAlignment;
             foreach(var row in deviceItems.Values)UpdateRowLayout(row);
             if(!useMotion)return;
             // Resolve destination layout once, then invert each glyph/button's displacement.
@@ -142,7 +156,7 @@ public sealed class MainWindow : Window {
                     Storyboard.SetTarget(fade,target);Storyboard.SetTargetProperty(fade,"Opacity");transition.Children.Add(fade);
                 }
                 Reveal(paneTitle);
-                Reveal(settingsLabel);
+                Reveal(settingsLabel);Reveal(personalizeLabel);
                 foreach(var row in deviceItems.Values)if(row.Content is Grid content)Reveal(content.Children[1]);
             }
             paneAnimation=transition;transition.Begin();
@@ -154,6 +168,7 @@ public sealed class MainWindow : Window {
             AutomationProperties.SetName(devices,L.T("Connected devices"));
             AutomationProperties.SetName(refresh,L.T("Refresh devices"));ToolTipService.SetToolTip(refresh,L.T("Refresh devices"));
             settingsLabel.Text=L.T("Settings");AutomationProperties.SetName(settingsItem,L.T("Settings"));ToolTipService.SetToolTip(settingsItem,L.T("Settings"));
+            personalizeLabel.Text=L.T("Personalization");AutomationProperties.SetName(personalizeItem,L.T("Personalization"));ToolTipService.SetToolTip(personalizeItem,L.T("Personalization"));
             paneAnimation?.Stop();switchAnimation?.Stop();
             foreach(var (id,row) in deviceItems){row.Content=DeviceVisuals.ListRow(models[id]);UpdateRowLayout(row);}
             renderedDevice=null;emptyRendered=false;Render();
@@ -165,13 +180,16 @@ public sealed class MainWindow : Window {
                 bool languageChanged=next.Language!=settings.Language;
                 next.KnownDevices=new(settings.KnownDevices);
                 next.DeviceKinds=new(settings.DeviceKinds);
+                next.Surfaces.X=session.Settings.Surfaces.X;next.Surfaces.Y=session.Settings.Surfaces.Y;
+                next.Surfaces.TrayX=session.Settings.Surfaces.TrayX;next.Surfaces.TrayY=session.Settings.Surfaces.TrayY;
                 next.Save();settings=next;L.Language=settings.Language;
                 applying=true;
                 try{foreach(var id in deviceItems.Keys.Where(settings.ExcludedDevices.Contains).ToArray()){devices.Items.Remove(deviceItems[id]);deviceItems.Remove(id);models.Remove(id);}}
                 finally{applying=false;}
                 if(selected!=null&&!models.ContainsKey(selected))selected=models.Keys.FirstOrDefault();
                 previous="";if(languageChanged)UpdateLanguage();
-                await SendCommand(JsonSerializer.Serialize(new{type="settings",preferences=settings.PollPreferences()}));
+                await session.UpdateSettings(settings);
+                if(session.Latest is {} latest)Apply(latest);
                 if(languageChanged)BuildSettings();
             });
             if(settingsVisible)scroll.Content=settingsPage;
@@ -180,32 +198,55 @@ public sealed class MainWindow : Window {
             if(settingsNavigation.SelectedItem==null)return;
             settingsVisible=true;
             applying=true;try{devices.SelectedItem=null;}finally{applying=false;}
-            BuildSettings();
-            scroll.Content=settingsPage;
+            personalizationVisible=ReferenceEquals(settingsNavigation.SelectedItem,personalizeItem);
+            if(personalizationVisible){
+                scroll.Content=PersonalizationPage.Create(session,this,async appearance=>{
+                    var next=JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(session.Settings))!;next.Personalization=appearance;next.Save();settings=next;
+                    ApplyAppearance();renderedDevice=null;Render();await session.UpdateSettings(next);
+                });
+            }else{BuildSettings();scroll.Content=settingsPage;}
             scroll.ChangeView(null,0,null,true);
         };
         titleBar.PaneToggleRequested+=(_,_)=>{
             compactList=!compactList;UpdatePane(animate:true);
             preferences=preferences with{CompactList=compactList};QueueSave();
         };
-        Content=new ContentControl{Content=root,FontFamily=new FontFamily("Microsoft YaHei UI"),HorizontalContentAlignment=HorizontalAlignment.Stretch,VerticalContentAlignment=VerticalAlignment.Stretch};
-        SetTitleBar(titleBar);
+        mainBackground=new BackgroundLayer(root,0,true);ApplyAppearance();
+        mainBackground.RequestedTheme=session.ResolveTheme();themeResources=new ThemeResources(mainBackground);
+        session.ThemeChanged+=UpdateTheme;session.PreferencesChanged+=UpdateTheme;
+        Content=new ContentControl{Content=mainBackground,FontFamily=new FontFamily("Microsoft YaHei UI"),HorizontalContentAlignment=HorizontalAlignment.Stretch,VerticalContentAlignment=VerticalAlignment.Stretch};
+        SetTitleBar(titleBar);UpdateTheme();
         clock.Tick += (_,_) => {if(updated!=null&&selected!=null&&models.TryGetValue(selected,out var current))DeviceVisuals.UpdateTime(updated,current);};clock.Start();
-        devices.SelectionChanged += (_,_) => { if(!applying&&devices.SelectedItem is ListViewItem item && item.Tag is string id){bool changed=selected!=id||settingsVisible;settingsVisible=false;settingsNavigation.SelectedItem=null;scroll.Content=detail;selected=id;Render();if(changed)AnimateSelection();} };
+        devices.SelectionChanged += (_,_) => { if(!applying&&devices.SelectedItem is ListViewItem item && item.Tag is string id){bool changed=selected!=id||settingsVisible;settingsVisible=false;personalizationVisible=false;settingsNavigation.SelectedItem=null;scroll.Content=deviceBackground;selected=id;Render();if(changed)AnimateSelection();} };
         refresh.Click += async (_,_) => {
-            try { if(core is { HasExited:false }) { refresh.IsEnabled=false;await SendCommand("refresh");await Task.Delay(2000);refresh.IsEnabled=true; } }
+            try { if(session.IsRunning) { refresh.IsEnabled=false;await SendCommand("refresh");await Task.Delay(2000);refresh.IsEnabled=true; } }
             catch(Exception e){ ShowError(e.Message); }
         };
         saveTimer.Tick+=(_,_)=>{saveTimer.Stop();preferences.Save(WindowPreferences.FilePath);};
         AppWindow.Changed+=(_,args)=>{if(args.DidPositionChange||args.DidSizeChange||args.DidPresenterChange){CaptureWindow();QueueSave();}};
         if(preferences.Maximized&&AppWindow.Presenter is OverlappedPresenter presenter)presenter.Maximize();
-        Closed += (_,_) => {clock.Stop();saveTimer.Stop();switchAnimation?.Stop();paneAnimation?.Stop();preferences.Save(WindowPreferences.FilePath);try{if(core is { HasExited:false })core.Kill(entireProcessTree:true);}catch{}core?.Dispose();};
-        _=StartCore();
+        AppWindow.Closing+=(_,e)=>{if(!exiting){e.Cancel=true;AppWindow.Hide();clock.Stop();Hidden?.Invoke();}};
+        Activated+=(_,_)=>{if(AppWindow.IsVisible){clock.Start();if(session.Latest is {} latest)Apply(latest);}};
+        Closed+=(_,_)=>{clock.Stop();saveTimer.Stop();switchAnimation?.Stop();paneAnimation?.Stop();preferences.Save(WindowPreferences.FilePath);session.Snapshot-=Apply;session.Failed-=ShowError;};
+        refresh.IsEnabled=true;
     }
-    private async Task SendCommand(string command){
-        await commandLock.WaitAsync();
-        try{if(core is {HasExited:false}){await core.StandardInput.WriteLineAsync(command);await core.StandardInput.FlushAsync();}}
-        finally{commandLock.Release();}
+    private Task SendCommand(string command)=>session.Send(command);
+    private void UpdateTheme(){
+        if(mainBackground==null)return;
+        var theme=session.ResolveTheme();mainBackground.RequestedTheme=theme;
+        if(Content is FrameworkElement content)content.RequestedTheme=theme;
+        DispatcherQueue.TryEnqueue(()=>{
+            themeResources?.Refresh();
+            AppWindow.TitleBar.ButtonForegroundColor=mainBackground.ContentTheme==ElementTheme.Dark?Microsoft.UI.Colors.White:Microsoft.UI.Colors.Black;
+        });
+    }
+    internal void SetSurfaceVisible(bool visible){if(visible){if(!clock.IsEnabled)clock.Start();}else clock.Stop();}
+    internal void Shutdown(){exiting=true;Close();}
+    internal void ShowDevice(string? id=null){
+        AppWindow.Show();Activate();
+        if(AppWindow.Presenter is OverlappedPresenter presenter&&presenter.State==OverlappedPresenterState.Minimized)presenter.Restore();
+        if(session.Latest is {} latest)Apply(latest);
+        if(id!=null&&deviceItems.TryGetValue(id,out var row))devices.SelectedItem=row;
     }
     private static void RoundTitleIcon(DependencyObject root){
         for(int i=0;i<VisualTreeHelper.GetChildrenCount(root);i++){
@@ -246,40 +287,8 @@ public sealed class MainWindow : Window {
         Storyboard.SetTarget(slide,transform);Storyboard.SetTargetProperty(slide,"Y");
         switchAnimation=new Storyboard();switchAnimation.Children.Add(fade);switchAnimation.Children.Add(slide);switchAnimation.Begin();
     }
-    private async Task StartCore(){
-        try {
-            string? root=Environment.GetEnvironmentVariable("SHOWDEVICE_HOME");
-            if(string.IsNullOrEmpty(root)){
-                var d=new DirectoryInfo(AppContext.BaseDirectory);
-                while(d!=null && !File.Exists(Path.Combine(d.FullName,"dist","showdevice.exe")))d=d.Parent;
-                root=d?.FullName;
-            }
-            string executable=root!=null?Path.Combine(root,"dist","showdevice.exe"):Path.Combine(AppContext.BaseDirectory,"showdevice.exe");
-            string plugins=root!=null?Path.Combine(root,"dist","plugins"):Path.Combine(AppContext.BaseDirectory,"plugins");
-            if(!File.Exists(executable))throw new IOException("Local core not found. Build the workspace and run showdevice package, then reopen the app.");
-            var info=new ProcessStartInfo(executable){UseShellExecute=false,RedirectStandardOutput=true,RedirectStandardInput=true,RedirectStandardError=true,CreateNoWindow=true};
-            info.Environment["SHOWDEVICE_POLL_PREFERENCES"]=JsonSerializer.Serialize(settings.PollPreferences());
-            info.ArgumentList.Add(Environment.GetEnvironmentVariable("SHOWDEVICE_DEMO")=="1"?"demo":"watch");info.ArgumentList.Add(plugins);
-            core=Process.Start(info)??throw new IOException("Unable to start local core.");
-            var stderr=core.StandardError.ReadToEndAsync();
-            refresh.IsEnabled=true;
-            while(true){
-                string? line=await ReadBoundedLine(core.StandardOutput);
-                if(line==null)break;
-                using var document=JsonDocument.Parse(line,new JsonDocumentOptions{MaxDepth=64});
-                var snapshot=document.RootElement.Clone();
-                DispatcherQueue.TryEnqueue(()=>Apply(snapshot));
-            }
-            var message=await stderr;
-            DispatcherQueue.TryEnqueue(()=>{refresh.IsEnabled=false;ShowError("Local core stopped. "+message[..Math.Min(message.Length,500)]);});
-        } catch(Exception e){DispatcherQueue.TryEnqueue(()=>ShowError(e.Message));}
-    }
-    private static async Task<string?> ReadBoundedLine(StreamReader reader){
-        var buffer=new System.Text.StringBuilder();var c=new char[1];
-        while(await reader.ReadAsync(c.AsMemory())!=0){if(c[0]=='\n')return buffer.ToString();if(buffer.Length>=2097152)throw new IOException("Core frame exceeded limit.");buffer.Append(c[0]);}
-        return buffer.Length==0?null:throw new IOException("Truncated core frame.");
-    }
     private void Apply(JsonElement snapshot){
+        if(!AppWindow.IsVisible||AppWindow.Presenter is OverlappedPresenter {State:OverlappedPresenterState.Minimized})return;
         var data=snapshot.GetProperty("devices");
         string signature=data.GetRawText()+snapshot.GetProperty("diagnostics").GetRawText();
         if(signature==previous)return;previous=signature;
@@ -287,7 +296,7 @@ public sealed class MainWindow : Window {
         error.IsOpen=diagnostics.Length>0;error.Title="";error.Message=string.Join("\n",diagnostics.Select(ReadingNotice.Brief).Distinct());ToolTipService.SetToolTip(error,string.Join("\n",diagnostics));
         applying=true;
         try{
-            var incoming=data.EnumerateArray().Where(item=>!settings.ExcludedDevices.Contains(item.GetProperty("device").GetProperty("id").GetString()!)).ToArray();
+            var incoming=SurfacePolicy.Ordered(data.EnumerateArray().Where(item=>!settings.ExcludedDevices.Contains(item.GetProperty("device").GetProperty("id").GetString()!)),settings.Surfaces.MainOrder,item=>item.GetProperty("device").GetProperty("id").GetString()!,item=>item.GetProperty("device").GetProperty("name").GetString()!).ToArray();
             bool knownChanged=false;
             foreach(var item in incoming){
                 string id=item.GetProperty("device").GetProperty("id").GetString()!,name=item.GetProperty("device").GetProperty("name").GetString()!;
@@ -313,7 +322,11 @@ public sealed class MainWindow : Window {
                 AutomationProperties.SetName(row,name);ToolTipService.SetToolTip(row,name);
                 models[id]=item.Clone();
             }
-            if(selected==null||!models.ContainsKey(selected))selected=models.Keys.FirstOrDefault();
+            for(int index=0;index<incoming.Length;index++){
+                var row=deviceItems[incoming[index].GetProperty("device").GetProperty("id").GetString()!];
+                int oldIndex=devices.Items.IndexOf(row);if(oldIndex!=index){devices.Items.RemoveAt(oldIndex);devices.Items.Insert(index,row);}
+            }
+            if(selected==null||!models.ContainsKey(selected))selected=incoming.Length>0?incoming[0].GetProperty("device").GetProperty("id").GetString():null;
             var target=!settingsVisible&&selected!=null?deviceItems[selected]:null;
             if(!ReferenceEquals(devices.SelectedItem,target))devices.SelectedItem=target;
         }finally{applying=false;}
@@ -327,24 +340,28 @@ public sealed class MainWindow : Window {
         row.HorizontalAlignment=compactList?HorizontalAlignment.Center:HorizontalAlignment.Stretch;
         DeviceVisuals.SetListRowCompact((FrameworkElement)row.Content,compactList);
     }
+    private void ApplyAppearance(){mainBackground?.Apply(settings.Personalization.MainBackground);if(selected!=null&&models.TryGetValue(selected,out var device))deviceBackground?.Apply(DevicePanelSpec(device));}
+    private BackgroundSpec DevicePanelSpec(JsonElement device)=>settings.Personalization.DeviceBackgrounds.GetValueOrDefault(device.GetProperty("device").GetProperty("id").GetString()!,settings.Personalization.DeviceBackground);
     private void Render(){
+        ApplyAppearance();
         if(selected==null||!models.TryGetValue(selected,out var device)){
             if(emptyRendered)return;
             updated=null;renderedDevice=null;detail.Children.Clear();readings.Children.Clear();emptyRendered=true;
-            detail.Children.Add(new TextBlock{Text=L.T("Connect a supported device"),FontSize=22});
-            detail.Children.Add(new TextBlock{Text=L.T("Connect a receiver or USB cable, then refresh."),TextWrapping=TextWrapping.Wrap});
+            detail.Children.Add(new TextBlock{Text=L.T("Connect a supported device"),FontSize=22,Margin=new Thickness(DeviceVisuals.DetailInset,24,DeviceVisuals.DetailInset,0)});
+            detail.Children.Add(new TextBlock{Text=L.T("Connect a receiver or USB cable, then refresh."),TextWrapping=TextWrapping.Wrap,Margin=new Thickness(DeviceVisuals.DetailInset,0,DeviceVisuals.DetailInset,0)});
             return;
         }
         bool headerChanged=renderedDevice is not JsonElement oldHeader||!ViewChanges.Header(oldHeader,device);
         bool bodyChanged=headerChanged||renderedDevice is not JsonElement oldBody||!ViewChanges.Body(oldBody,device);
         if(headerChanged){
             detail.Children.Clear();updated=new TextBlock();
-            detail.Children.Add(DeviceVisuals.Header(device,updated));
+            detail.Children.Add(DeviceVisuals.Header(device,updated,DevicePanelSpec(device).Kind!="system"));
             detail.Children.Add(deviceError);detail.Children.Add(readings);
         }
         if(bodyChanged){readings.Children.Clear();PluginPage.Render(readings,device);}
         if(updated!=null)DeviceVisuals.UpdateTime(updated,device);
         deviceError.IsOpen=device.TryGetProperty("error",out var issue)&&issue.ValueKind==JsonValueKind.String;
+        deviceError.Visibility=deviceError.IsOpen?Visibility.Visible:Visibility.Collapsed;
         var rawIssue=deviceError.IsOpen?issue.GetString():null;
         deviceError.Title="";deviceError.Message=deviceError.IsOpen?ReadingNotice.Brief(rawIssue):null;
         deviceError.Severity=ReadingNotice.MayBeSleeping(rawIssue)?InfoBarSeverity.Informational:InfoBarSeverity.Warning;

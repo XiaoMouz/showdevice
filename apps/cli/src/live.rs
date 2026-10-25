@@ -12,12 +12,31 @@ enum Event {
     },
     Refresh,
     Settings(PollPreferences),
+    Visibility(bool, Vec<String>),
     Stop,
 }
 enum Control {
     Refresh,
     Reschedule,
     Stop,
+}
+#[derive(Clone)]
+struct Demand {
+    all: bool,
+    ids: BTreeSet<String>,
+    revision: u64,
+    stopping: bool,
+}
+impl Demand {
+    fn wants(&self, id: &str) -> bool {
+        self.all || self.ids.contains(id)
+    }
+}
+fn poll_due(wanted: bool, changed: bool, elapsed: Option<Duration>, interval: u64) -> bool {
+    wanted
+        && elapsed.is_none_or(|age| {
+            age >= Duration::from_secs(2) && (changed || age >= Duration::from_secs(interval))
+        })
 }
 struct Actor {
     generation: u64,
@@ -79,8 +98,10 @@ fn worker(
     control: Receiver<Control>,
     demo: bool,
     preferences: std::sync::Arc<std::sync::RwLock<PollPreferences>>,
+    demand: std::sync::Arc<std::sync::RwLock<Demand>>,
 ) {
     let mut view = DeviceView {
+        surface_templates: package.descriptor.surface_templates.clone(),
         product_image: package.product_image(),
         device_kind: package.descriptor.device_kind,
         device: device.clone(),
@@ -113,9 +134,34 @@ fn worker(
         }
     };
     let mut broker = None;
+    let mut last: Option<Instant> = None;
+    let mut revision = 0;
     loop {
         if preferences.read().unwrap().excluded(&device.id) {
             return;
+        }
+        let current = demand.read().unwrap().clone();
+        if current.stopping {
+            return;
+        }
+        let seconds = preferences.read().unwrap().interval(&device.id);
+        if !poll_due(
+            current.wants(&device.id),
+            current.revision != revision,
+            last.map(|t| t.elapsed()),
+            seconds,
+        ) {
+            let wait = if !current.wants(&device.id) {
+                Duration::from_secs(3600)
+            } else if current.revision != revision {
+                Duration::from_secs(2).saturating_sub(last.unwrap().elapsed())
+            } else {
+                Duration::from_secs(seconds).saturating_sub(last.unwrap().elapsed())
+            };
+            match control.recv_timeout(wait) {
+                Ok(Control::Stop) | Err(mpsc::RecvTimeoutError::Disconnected) => return,
+                _ => continue,
+            }
         }
         let result = with_broker(
             &mut broker,
@@ -175,16 +221,9 @@ fn worker(
         if !session.active {
             return;
         }
-        let last = Instant::now();
-        loop {
-            let seconds = preferences.read().unwrap().interval(&device.id);
-            let remaining = Duration::from_secs(seconds).saturating_sub(last.elapsed());
-            match control.recv_timeout(remaining) {
-                Ok(Control::Stop) | Err(mpsc::RecvTimeoutError::Disconnected) => return,
-                Ok(Control::Reschedule) => continue,
-                _ => break,
-            }
-        }
+        // Requests arriving during this query share its result, rather than queueing a second query.
+        revision = demand.read().unwrap().revision;
+        last = Some(Instant::now());
     }
 }
 pub fn run(root: &Path, demo: bool) -> Result<()> {
@@ -193,6 +232,15 @@ pub fn run(root: &Path, demo: bool) -> Result<()> {
         .and_then(|s| serde_json::from_str::<PollPreferences>(&s).ok())
         .filter(PollPreferences::valid)
         .unwrap_or_default();
+    let demand = std::sync::Arc::new(std::sync::RwLock::new(Demand {
+        all: std::env::var("SHOWDEVICE_VISIBILITY_MANAGED")
+            .ok()
+            .as_deref()
+            != Some("1"),
+        ids: BTreeSet::new(),
+        revision: 1,
+        stopping: false,
+    }));
     let preferences = std::sync::Arc::new(std::sync::RwLock::new(initial));
     let (packages, mut diagnostics) = sd_runtime::discover(root);
     if demo {
@@ -224,10 +272,17 @@ pub fn run(root: &Path, demo: bool) -> Result<()> {
                         let _ = commands.send(Event::Stop);
                         return;
                     }
-                    if let Ok(AppCommand::Settings { preferences }) = serde_json::from_str(&line) {
-                        if preferences.valid() {
+                    match serde_json::from_str::<AppCommand>(&line) {
+                        Ok(AppCommand::Settings { preferences }) if preferences.valid() => {
                             let _ = commands.send(Event::Settings(preferences));
                         }
+                        Ok(AppCommand::Visibility { all, device_ids })
+                            if device_ids.len() <= 256
+                                && device_ids.iter().all(|id| id.len() <= 1024) =>
+                        {
+                            let _ = commands.send(Event::Visibility(all, device_ids));
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -285,8 +340,9 @@ pub fn run(root: &Path, demo: bool) -> Result<()> {
                     let (control, jobs) = mpsc::sync_channel(1);
                     let events = tx.clone();
                     let prefs = preferences.clone();
+                    let interest = demand.clone();
                     let thread = std::thread::spawn(move || {
-                        worker(package, device, g, events, jobs, demo, prefs)
+                        worker(package, device, g, events, jobs, demo, prefs, interest)
                     });
                     actors.insert(
                         id,
@@ -328,8 +384,20 @@ pub fn run(root: &Path, demo: bool) -> Result<()> {
             Ok(Event::Update { generation, view }) => {
                 dirty |= apply_update(&actors, &mut views, generation, *view);
             }
+            Ok(Event::Visibility(all, ids)) => {
+                let mut interest = demand.write().unwrap();
+                interest.all = all;
+                interest.ids = ids.into_iter().collect();
+                interest.revision += 1;
+                drop(interest);
+                for actor in actors.values() {
+                    let _ = actor.control.try_send(Control::Reschedule);
+                }
+                scan_at = Instant::now();
+            }
             Ok(Event::Refresh) => {
                 if refresh_at.elapsed() >= Duration::from_secs(2) {
+                    demand.write().unwrap().revision += 1;
                     for actor in actors.values() {
                         let _ = actor.control.try_send(Control::Refresh);
                     }
@@ -341,6 +409,7 @@ pub fn run(root: &Path, demo: bool) -> Result<()> {
             Err(mpsc::RecvTimeoutError::Timeout) => {}
         }
     }
+    demand.write().unwrap().stopping = true;
     for actor in actors.values() {
         let _ = actor.control.try_send(Control::Stop);
     }
@@ -361,6 +430,7 @@ mod reconnect_tests {
         let mut device = demo_device();
         device.id = id.into();
         DeviceView {
+            surface_templates: vec![],
             product_image: None,
             device_kind: DeviceKind::Other,
             device,
@@ -417,7 +487,10 @@ mod reconnect_tests {
     }
     fn query(b: &mut Broker) -> Result<Vec<u8>> {
         b.query(
-            Query::HidInput { response_len: 1 },
+            Query::HidInput {
+                response_len: 1,
+                latest: false,
+            },
             Duration::from_millis(100),
         )
     }
@@ -453,5 +526,31 @@ mod reconnect_tests {
         assert!(with_broker(&mut broker, || panic!("existing handle"), query).is_err());
         assert!(!broker.as_ref().unwrap().is_healthy());
         assert!(!broker.as_ref().unwrap().needs_reopen());
+    }
+}
+
+#[cfg(test)]
+mod demand_tests {
+    use super::*;
+    #[test]
+    fn hidden_never_polls_and_reveal_debounces() {
+        assert!(!poll_due(false, true, None, 30));
+        assert!(!poll_due(false, true, Some(Duration::from_secs(90)), 30));
+        assert!(poll_due(true, true, None, 30));
+        assert!(!poll_due(true, true, Some(Duration::from_secs(1)), 30));
+        assert!(poll_due(true, true, Some(Duration::from_secs(2)), 30));
+        assert!(!poll_due(true, false, Some(Duration::from_secs(20)), 30));
+        assert!(poll_due(true, false, Some(Duration::from_secs(30)), 30));
+    }
+    #[test]
+    fn device_interest_is_scoped() {
+        let d = Demand {
+            all: false,
+            ids: BTreeSet::from(["mouse".into()]),
+            revision: 1,
+            stopping: false,
+        };
+        assert!(d.wants("mouse"));
+        assert!(!d.wants("keyboard"));
     }
 }

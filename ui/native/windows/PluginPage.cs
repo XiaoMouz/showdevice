@@ -54,7 +54,7 @@ internal static class PluginPage {
     }
     private static string Section(JsonElement node){
         string key=node.TryGetProperty("binding",out var b)&&b.ValueKind==JsonValueKind.String?b.GetString()!:"";
-        return key.StartsWith("battery.")?"power":key is "keyboard.connection_mode" or "keyboard.bluetooth_channel"?"connection":key.StartsWith("lighting.")?"lighting":"settings";
+        return key.StartsWith("battery.")?"power":(key.StartsWith("connection.")||key is "keyboard.connection_mode" or "keyboard.bluetooth_channel")?"connection":key.StartsWith("lighting.")?"lighting":"settings";
     }
     private static void Add(StackPanel parent,JsonElement node,JsonElement state,Dictionary<string,JsonElement> caps,string? error){
         if(!Condition(node,"visible_when",state))return;
@@ -64,7 +64,7 @@ internal static class PluginPage {
         if(DeviceVisuals.Unsupported(state,binding))return;
         if(component is "status" or "result"){
             if(binding=="battery.percent"){
-                var battery=DeviceVisuals.Battery(state,error:error);if(battery!=null)parent.Children.Add(battery);return;
+                var battery=DeviceVisuals.Battery(state,error:error);if(battery!=null){if(state.TryGetProperty(binding,out var batteryReading)&&batteryReading.TryGetProperty("precision",out var precision)&&precision.ValueKind==JsonValueKind.String)ToolTipService.SetToolTip(battery,L.T(precision.GetString()!));parent.Children.Add(battery);}return;
             }
             if(binding=="battery.charging"&&state.TryGetProperty("battery.percent",out var percent)&&percent.GetProperty("availability").GetString()=="available"&&state.TryGetProperty(binding,out var charge)&&charge.GetProperty("availability").GetString()=="available")return;
             var metric=new Grid{Padding=new Thickness(0,12,0,12),ColumnSpacing=20};

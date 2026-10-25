@@ -116,7 +116,7 @@ fn package(root: &Path) -> Result<()> {
         .to_owned();
     let dest = root.join("dist/plugins");
     std::fs::create_dir_all(&dest)?;
-    for brand in ["razer", "hyperx", "rapoo", "nuphy", "mock"] {
+    for brand in ["razer", "hyperx", "rapoo", "nuphy", "sony", "mock"] {
         let source = root.join("plugins").join(brand);
         let mut d: Descriptor =
             serde_json::from_slice(&std::fs::read(source.join("plugin.json"))?)?;
@@ -160,6 +160,7 @@ fn schemas(out: &Path) -> Result<()> {
         ("app-snapshot", schemars::schema_for!(AppSnapshot)),
         ("app-command", schemars::schema_for!(AppCommand)),
         ("poll-preferences", schemars::schema_for!(PollPreferences)),
+        ("surface-template", schemars::schema_for!(SurfaceTemplate)),
         (
             "device-settings-extension",
             schemars::schema_for!(DeviceSettingsExtension),
@@ -286,6 +287,7 @@ fn monitor(root: &Path, watch: bool, demo: bool) -> Result<()> {
                         })
                         .collect();
                     let view = DeviceView {
+                        surface_templates: package.descriptor.surface_templates.clone(),
                         product_image: package.product_image(),
                         device_kind: package.descriptor.device_kind,
                         device: device.clone(),
@@ -311,6 +313,7 @@ fn monitor(root: &Path, watch: bool, demo: bool) -> Result<()> {
                         views
                             .entry(device.id.clone())
                             .or_insert(DeviceView {
+                                surface_templates: vec![],
                                 product_image: package.product_image(),
                                 device_kind: package.descriptor.device_kind,
                                 device: device.clone(),
@@ -478,6 +481,7 @@ fn new_plugin(path: &Path) -> Result<()> {
         "use sd_api::*;\nstruct Example;\nimpl sd_sdk::Plugin for Example {\nfn descriptor(&self)->Descriptor {sd_sdk::installed_descriptor().expect(\"descriptor\")}\nfn poll(&mut self,_:&Device,_:&mut sd_sdk::Client)->anyhow::Result<State>{Ok(State::new())}\n}\nfn main()->anyhow::Result<()>{sd_sdk::serve(Example)}\n",
     )?;
     let d = Descriptor {
+        surface_templates: vec![],
         product_image: None,
         device_kind: DeviceKind::Other,
         manifest: Manifest {

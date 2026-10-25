@@ -66,7 +66,10 @@ fn backend_panic_is_contained() {
     let mut b = Broker::new(|_| panic!("fake transport panic"));
     assert!(
         b.query(
-            Query::HidInput { response_len: 1 },
+            Query::HidInput {
+                response_len: 1,
+                latest: false
+            },
             Duration::from_millis(100)
         )
         .is_err()
@@ -80,14 +83,20 @@ fn timed_out_transport_is_retired() {
     });
     assert!(
         b.query(
-            Query::HidInput { response_len: 1 },
+            Query::HidInput {
+                response_len: 1,
+                latest: false
+            },
             Duration::from_millis(10)
         )
         .is_err()
     );
     assert!(
         b.query(
-            Query::HidInput { response_len: 1 },
+            Query::HidInput {
+                response_len: 1,
+                latest: false
+            },
             Duration::from_millis(100)
         )
         .is_err()
@@ -98,7 +107,10 @@ fn oversized_response_cannot_enter_core() {
     let mut b = Broker::new(|_| Ok(vec![0; 1025]));
     assert!(
         b.query(
-            Query::HidInput { response_len: 1 },
+            Query::HidInput {
+                response_len: 1,
+                latest: false
+            },
             Duration::from_millis(100)
         )
         .is_err()

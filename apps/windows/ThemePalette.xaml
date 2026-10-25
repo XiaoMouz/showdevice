@@ -1,0 +1,10 @@
+<UserControl x:Class="ShowDevice.ThemePalette" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+ <StackPanel>
+  <Border x:Name="Primary" Background="{ThemeResource TextFillColorPrimaryBrush}"/>
+  <Border x:Name="Secondary" Background="{ThemeResource TextFillColorSecondaryBrush}"/>
+  <Border x:Name="Layer" Background="{ThemeResource LayerFillColorDefaultBrush}"/>
+  <Border x:Name="Card" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"/>
+  <Border x:Name="Stroke" Background="{ThemeResource CardStrokeColorDefaultBrush}"/>
+  <Border x:Name="Caution" Background="{ThemeResource SystemFillColorCautionBrush}"/>
+ </StackPanel>
+</UserControl>

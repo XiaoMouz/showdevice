@@ -1,4 +1,34 @@
 use super::*;
+#[test]
+fn surface_templates_require_valid_pages_and_capabilities() {
+    let mut d = descriptor();
+    d.surface_templates.push(SurfaceTemplate {
+        surface: SurfaceTarget::Tray,
+        page_id: d.pages[0].id.clone(),
+        style: "mouse.dpi.v1".into(),
+        optional: false,
+    });
+    assert!(validate(&d).is_ok());
+    d.surface_templates[0].page_id = "missing".into();
+    assert!(validate(&d).is_err());
+    d.surface_templates[0].optional = true;
+    assert!(validate(&d).is_ok());
+    d.surface_templates.push(d.surface_templates[0].clone());
+    assert!(validate(&d).is_err());
+}
+#[test]
+fn future_surface_components_require_explicit_optional_fallback() {
+    let mut d = descriptor();
+    d.surface_templates.push(SurfaceTemplate {
+        surface: SurfaceTarget::Desktop,
+        page_id: d.pages[0].id.clone(),
+        style: "audio.waveform.v2".into(),
+        optional: false,
+    });
+    assert!(validate(&d).is_err());
+    d.surface_templates[0].optional = true;
+    assert!(validate(&d).is_ok());
+}
 fn descriptor() -> Descriptor {
     serde_json::from_str(include_str!("../../../plugins/mock/plugin.json")).unwrap()
 }

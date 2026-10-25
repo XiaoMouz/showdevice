@@ -712,6 +712,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "sd-plugin-sony"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "sd-api",
+ "sd-sdk",
+ "serde_json",
+]
+
+[[package]]
 name = "sd-runtime"
 version = "0.1.0"
 dependencies = [

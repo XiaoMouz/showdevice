@@ -117,7 +117,7 @@ pub fn validate_permissions(p: &Permissions) -> Result<()> {
                     bail!("invalid output query");
                 }
             }
-            Query::HidInput { response_len } => {
+            Query::HidInput { response_len, .. } => {
                 if *response_len == 0 || *response_len > 1024 {
                     bail!("invalid input query");
                 }
@@ -164,7 +164,7 @@ impl Broker {
         let limit = match &q {
             Query::HidFeature { response_len, .. }
             | Query::HidOutput { response_len, .. }
-            | Query::HidInput { response_len } => (*response_len).min(4096),
+            | Query::HidInput { response_len, .. } => (*response_len).min(4096),
             Query::BleRead { .. } => 1024,
         };
         if !self.healthy {

@@ -1,0 +1,100 @@
+{
+  "manifest": {
+    "id": "org.showdevice.sony.dualsense",
+    "version": "0.1.0",
+    "api": ">=1.0.0, <2.0.0",
+    "wire": 1,
+    "executable": "sd-plugin-sony.exe",
+    "required": [
+      "state.snapshot.v1",
+      "ui.declarative.v1"
+    ],
+    "matches": [
+      {
+        "vendor_id": 1356,
+        "product_id": 3302,
+        "usage_page": 1,
+        "usage": 5
+      }
+    ]
+  },
+  "device_kind": "gamepad",
+  "capabilities": [
+    {
+      "id": "battery.percent",
+      "readable": true,
+      "writable": false,
+      "subscribable": false,
+      "value_type": {
+        "type": "number",
+        "min": 0,
+        "max": 100,
+        "step": null
+      }
+    },
+    {
+      "id": "battery.charging",
+      "readable": true,
+      "writable": false,
+      "subscribable": false,
+      "value_type": {
+        "type": "boolean"
+      }
+    },
+    {
+      "id": "battery.status",
+      "readable": true,
+      "writable": false,
+      "subscribable": false,
+      "value_type": {
+        "type": "text"
+      }
+    },
+    {
+      "id": "connection.mode",
+      "readable": true,
+      "writable": false,
+      "subscribable": false,
+      "value_type": {
+        "type": "text"
+      }
+    }
+  ],
+  "pages": [
+    {
+      "id": "overview",
+      "title": "Device status",
+      "nodes": [
+        {
+          "id": "status_0",
+          "component": "status",
+          "version": 1,
+          "label": "Battery (%)",
+          "binding": "battery.percent"
+        },
+        {
+          "id": "status_1",
+          "component": "status",
+          "version": 1,
+          "label": "Charging",
+          "binding": "battery.charging"
+        },
+        {
+          "id": "status_2",
+          "component": "status",
+          "version": 1,
+          "label": "Battery status",
+          "binding": "battery.status"
+        },
+        {
+          "id": "status_3",
+          "component": "status",
+          "version": 1,
+          "label": "Connection mode",
+          "binding": "connection.mode"
+        }
+      ]
+    }
+  ],
+  "product_image": "assets/product-trimmed.png"
+}

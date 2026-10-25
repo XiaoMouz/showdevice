@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["core/api", "core/runtime", "transports/hid", "transports/ble", "ui/schema", "sdk", "plugins/razer", "plugins/hyperx", "plugins/rapoo", "plugins/nuphy", "plugins/mock", "features/device", "features/app", "apps/cli"]
+members = ["core/api", "core/runtime", "transports/hid", "transports/ble", "ui/schema", "sdk", "plugins/razer", "plugins/hyperx", "plugins/sony", "plugins/rapoo", "plugins/nuphy", "plugins/mock", "features/device", "features/app", "apps/cli"]
 [workspace.package]
 version = "0.1.0"
 edition = "2024"

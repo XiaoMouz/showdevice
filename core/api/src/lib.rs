@@ -53,7 +53,15 @@ impl PollPreferences {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AppCommand {
-    Settings { preferences: PollPreferences },
+    Settings {
+        preferences: PollPreferences,
+    },
+    /// Visible native surfaces merge their interests. Empty + all=false suspends queries.
+    Visibility {
+        all: bool,
+        #[serde(default)]
+        device_ids: Vec<String>,
+    },
 }
 pub const HOST_CAPABILITIES: &[&str] = &[
     "hid.query.v1",
@@ -296,6 +304,21 @@ pub struct UiPage {
     pub optional: bool,
     pub nodes: Vec<UiNode>,
 }
+/// Host-rendered compact surface contributions; never executable UI code.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SurfaceTemplate {
+    pub surface: SurfaceTarget,
+    pub page_id: String,
+    pub style: String,
+    #[serde(default)]
+    pub optional: bool,
+}
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SurfaceTarget {
+    Desktop,
+    Tray,
+}
 /// Reserved device-settings contribution. Not a live plugin message in v1.
 /// The host must validate ownership, capability bindings, components and limits
 /// before inserting this declarative page in a device's settings slot.
@@ -325,6 +348,8 @@ pub struct DeviceSettingsChange {
 }
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Descriptor {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub surface_templates: Vec<SurfaceTemplate>,
     /// Optional package-relative PNG/JPEG product artwork. Never a network URL.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub product_image: Option<String>,
@@ -341,6 +366,7 @@ pub enum DeviceKind {
     Keyboard,
     Mouse,
     Headset,
+    Gamepad,
     #[default]
     #[serde(other)]
     Other,
@@ -367,6 +393,8 @@ pub enum Query {
     },
     HidInput {
         response_len: usize,
+        #[serde(default)]
+        latest: bool,
     },
     BleRead {
         service: String,
@@ -457,6 +485,8 @@ pub enum ConfigRequest {
 }
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct DeviceView {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub surface_templates: Vec<SurfaceTemplate>,
     /// Host-resolved local artwork path; absent when unavailable or invalid.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub product_image: Option<String>,
@@ -555,7 +585,9 @@ mod tests {
             r#"{"type":"settings","preferences":{"interval_seconds":60,"future":true}}"#,
         )
         .unwrap();
-        let AppCommand::Settings { preferences } = command;
+        let AppCommand::Settings { preferences } = command else {
+            panic!("settings expected")
+        };
         assert!(preferences.valid());
         assert_eq!(preferences.interval("device"), 60);
     }

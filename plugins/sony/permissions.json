@@ -1,0 +1,9 @@
+{
+  "queries": {
+    "status": {
+      "kind": "hid_input",
+      "response_len": 78,
+      "latest": true
+    }
+  }
+}

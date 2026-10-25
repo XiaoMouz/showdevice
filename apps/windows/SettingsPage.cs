@@ -46,10 +46,28 @@ internal static class SettingsPage {
         var language=new ComboBox{HorizontalAlignment=HorizontalAlignment.Stretch};
         language.Items.Add("简体中文");language.Items.Add("English");language.SelectedIndex=current.Language=="en"?1:0;
         general.Children.Add(Panel(Field("Language",language,SettingIcon("\uE774"))));
+        var theme=new ComboBox{HorizontalAlignment=HorizontalAlignment.Stretch};foreach(var label in new[]{"Follow system","Light","Dark"})theme.Items.Add(L.T(label));theme.SelectedIndex=Array.IndexOf(new[]{"system","light","dark"},current.Theme);
+        general.Children.Add(Panel(Field("Theme",theme,SettingIcon("\uE708"))));
+        theme.SelectionChanged+=(_,_)=>{draft.Theme=new[]{"system","light","dark"}[theme.SelectedIndex];Commit();};
         var interval=new NumberBox{Minimum=5,Maximum=3600,Value=current.IntervalSeconds,SpinButtonPlacementMode=NumberBoxSpinButtonPlacementMode.Compact};
         general.Children.Add(Panel(Field("Global refresh interval (seconds)",interval,SettingIcon("\uE72C"))));content.Children.Add(general);
         language.SelectionChanged+=(_,_)=>{draft.Language=language.SelectedIndex==1?"en":"zh";Commit();};
         interval.ValueChanged+=(_,_)=>{if(!double.IsFinite(interval.Value))return;draft.IntervalSeconds=(int)Math.Clamp(interval.Value,5,3600);Commit();};
+        var surfaces=new StackPanel{Spacing=8};surfaces.Children.Add(Heading("Tray and desktop"));
+        var desktop=new ToggleSwitch{IsOn=current.Surfaces.DesktopEnabled,MinWidth=0,OnContent="",OffContent=""};
+        var locked=new ToggleSwitch{IsOn=current.Surfaces.Locked,MinWidth=0,OnContent="",OffContent=""};
+        var width=new NumberBox{Minimum=260,Maximum=480,Value=current.Surfaces.Width,SpinButtonPlacementMode=NumberBoxSpinButtonPlacementMode.Compact};
+        var motion=new NumberBox{Minimum=0,Maximum=1000,Value=current.Surfaces.TransitionMs,SpinButtonPlacementMode=NumberBoxSpinButtonPlacementMode.Compact};
+        surfaces.Children.Add(Panel(Field("Desktop card",desktop,SettingIcon("\uE7F4"))));
+        surfaces.Children.Add(Panel(Field("Lock card position",locked,SettingIcon("\uE72E"))));
+        surfaces.Children.Add(Panel(Field("Card width",width,SettingIcon("\uE740"))));
+        surfaces.Children.Add(Panel(Field("Battery transition (ms)",motion,SettingIcon("\uE916"))));
+        desktop.Toggled+=(_,_)=>{draft.Surfaces.DesktopEnabled=desktop.IsOn;Commit();};
+        locked.Toggled+=(_,_)=>{draft.Surfaces.Locked=locked.IsOn;Commit();};
+        width.ValueChanged+=(_,_)=>{if(double.IsFinite(width.Value)){draft.Surfaces.Width=width.Value;Commit();}};
+        motion.ValueChanged+=(_,_)=>{if(double.IsFinite(motion.Value)){draft.Surfaces.TransitionMs=(int)motion.Value;Commit();}};
+        content.Children.Add(surfaces);
+        content.Children.Add(Panel(DeviceArrangementEditor.Create(draft,Commit)));
         var devices=new StackPanel{Spacing=8};
         if(current.KnownDevices.Count>0)devices.Children.Add(Heading("Devices"));
         foreach(var (id,name) in current.KnownDevices.OrderBy(p=>p.Value)){
